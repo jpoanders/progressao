@@ -7,7 +7,24 @@ a bater") para progredir a carga.
 
 Plano embutido: 4 semanas, 4 dias de força + corrida (walk-run progressivo).
 
+**App no ar:** https://jpoanders.github.io/progressao/
+
 ---
+
+## Como instalar como PWA no iPhone (obrigatório no iOS via Safari)
+
+O iOS **não** mostra prompt automático de instalação — o app tem um lembrete
+interno, mas o passo é manual:
+
+1. Abra **https://jpoanders.github.io/progressao/** no **Safari** (só o Safari
+   instala PWA no iOS).
+2. Toque no botão **Compartilhar** (quadrado com seta pra cima).
+3. Escolha **"Adicionar à Tela de Início"**.
+4. Abra pelo ícone na tela inicial — ele roda em tela cheia, sem a barra do
+   Safari, respeitando o notch/Dynamic Island e a barra inferior, e **funciona
+   offline** (o service worker cacheia o app na primeira visita).
+
+No Android/Chrome, use o menu → "Instalar app" / "Adicionar à tela inicial".
 
 ## Como rodar localmente
 
@@ -15,7 +32,7 @@ O app é só arquivos estáticos. O único requisito é servir por HTTP (o servi
 worker não funciona abrindo o arquivo direto via `file://`; `localhost` serve):
 
 ```bash
-cd web-set-tracker
+cd progressao
 python3 -m http.server 8080
 ```
 
@@ -24,18 +41,23 @@ modo dispositivo do DevTools (Chrome: `Ctrl/Cmd+Shift+M`).
 
 Qualquer servidor estático serve igual (`npx serve`, Nginx, GitHub Pages, etc.).
 
-## Como instalar como PWA no iPhone (obrigatório no iOS via Safari)
+> Nota: o service worker exige contexto seguro (HTTPS ou `localhost`). Ao abrir
+> pelo IP da máquina na rede (ex.: `http://192.168.0.7:8080`) o SW **não**
+> registra — a interface funciona, mas sem offline/instalação. Para PWA completo
+> em outro aparelho, use a URL pública acima ou um túnel HTTPS.
 
-O iOS **não** mostra prompt automático de instalação — o app tem um lembrete
-interno, mas o passo é manual:
+## Publicação (GitHub Pages)
 
-1. Abra o app **no Safari** (só o Safari instala PWA no iOS).
-2. Toque no botão **Compartilhar** (quadrado com seta pra cima).
-3. Escolha **"Adicionar à Tela de Início"**.
-4. Abra pelo ícone na tela inicial — ele roda em tela cheia, sem a barra do
-   Safari, respeitando o notch/Dynamic Island e a barra inferior.
+O app está hospedado no GitHub Pages a partir da raiz da branch `main` do
+repositório `jpoanders/progressao`. Para publicar atualizações:
 
-No Android/Chrome, use o menu → "Instalar app" / "Adicionar à tela inicial".
+```bash
+git push
+```
+
+O Pages rebuilda automaticamente em ~1 min. Ao mudar o app, incremente
+`CACHE_VERSION` em `sw.js` para que o cache do service worker seja atualizado
+nos aparelhos já instalados.
 
 ---
 
@@ -94,8 +116,15 @@ limpar o navegador.
 3. Abaixo de cada série aparece a **meta a bater** — o registro da vez anterior
    mais recente daquele mesmo exercício/série (idealmente a semana passada).
    Toque em **copiar** para trazer os valores anteriores e então superá-los.
-4. **Corrida** mostra só o protocolo da semana, sem campos.
-5. **Limpar este dia** apaga os registros do dia/semana atuais (com confirmação).
+4. **Séries ajustáveis:** use o `−` / `+` no rodapé de cada exercício para
+   remover ou adicionar séries (limites 1 a 8). Começa no valor do plano; o
+   ajuste vale **por semana** (S1 pode ter 4 séries e S2 seguir com 3). Remover
+   uma série com dados pede confirmação. O `3×6-8` ao lado do nome continua sendo
+   a faixa de reps **prescrita** de referência — a contagem real aparece no
+   controle de séries.
+5. **Corrida** mostra só o protocolo da semana, sem campos.
+6. **Limpar este dia** apaga os registros do dia/semana atuais e volta o número
+   de séries ao padrão do plano (com confirmação).
 
 ## Fora de escopo (v1)
 Sem gráficos, estatística de volume, cálculo de progressão/deload, contas de
