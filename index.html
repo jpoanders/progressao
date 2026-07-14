@@ -211,6 +211,10 @@
     .run ul li { margin: 4px 0; }
     .run ul li.active { color: var(--text); font-weight: 700; }
 
+    /* Formulário de registro da corrida */
+    .run-form { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    @media (max-width: 360px) { .run-form { grid-template-columns: 1fr; } }
+
     /* Backup / ferramentas */
     .tools { margin-top: 20px; display: grid; gap: 10px; }
     .tools-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
@@ -346,11 +350,12 @@
             lastExport: s.lastExport ?? null,
             entries: s.entries,
             setCounts: (s.setCounts && typeof s.setCounts === "object") ? s.setCounts : {},
+            runs: (s.runs && typeof s.runs === "object") ? s.runs : {},
           };
         }
       }
     } catch (e) { /* estado corrompido — recomeça limpo */ }
-    return { version: 1, lastExport: null, entries: {}, setCounts: {} };
+    return { version: 1, lastExport: null, entries: {}, setCounts: {}, runs: {} };
   }
 
   function saveState() {
@@ -417,6 +422,29 @@
     for (let w = week - 1; w >= 1; w--) {
       const e = getEntry(w, dayId, exId, setIdx);
       if (e && (e.kg != null || e.reps != null)) return { week: w, ...e };
+    }
+    return null;
+  }
+
+  /* ---------------- Corrida (uma sessão por semana) ---------------- */
+  const RUN_FIELDS = ["dist", "time", "cycles"];
+  function runHasData(r) { return !!r && RUN_FIELDS.some((f) => r[f] != null); }
+
+  function getRun(week) { return state.runs[week] || null; }
+
+  function setRunField(week, field, value) {
+    const cur = state.runs[week] || { dist: null, time: null, cycles: null };
+    cur[field] = value;
+    if (!runHasData(cur)) delete state.runs[week]; // não guarda corrida vazia
+    else state.runs[week] = cur;
+    saveState();
+  }
+
+  // "Meta a bater" da corrida: sessão preenchida mais recente em semanas anteriores.
+  function findPreviousRun(week) {
+    for (let w = week - 1; w >= 1; w--) {
+      const r = getRun(w);
+      if (runHasData(r)) return { week: w, ...r };
     }
     return null;
   }
@@ -644,6 +672,34 @@
     return frag;
   }
 
+  // Campo de registro de corrida (espelha makeInput, mas grava em state.runs).
+  function makeRunInput(week, field, isInt, labelText, suffix) {
+    const wrap = document.createElement("div");
+    wrap.className = "field";
+    const label = document.createElement("label");
+    label.textContent = labelText + (suffix ? ` (${suffix})` : "");
+    const input = document.createElement("input");
+    input.type = "text";
+    input.inputMode = "decimal";
+    input.autocomplete = "off";
+    input.placeholder = suffix || labelText.toLowerCase();
+    input.setAttribute("aria-label", labelText + " da corrida");
+    const r = getRun(week);
+    input.value = r ? fmt(r[field], isInt) : "";
+
+    input.addEventListener("input", () => {
+      setRunField(week, field, parseNum(input.value));
+    });
+    input.addEventListener("blur", () => {
+      const cur = getRun(week);
+      input.value = cur ? fmt(cur[field], isInt) : "";
+    });
+
+    wrap.appendChild(label);
+    wrap.appendChild(input);
+    return { wrap, input };
+  }
+
   function renderRunning() {
     const frag = document.createDocumentFragment();
     const box = document.createElement("div");
@@ -675,6 +731,85 @@
     });
     box.appendChild(ul);
     frag.appendChild(box);
+
+    // ---- Card de registro da corrida desta semana ----
+    const card = document.createElement("section");
+    card.className = "exercise";
+
+    const head = document.createElement("div");
+    head.className = "ex-head";
+    const name = document.createElement("h2");
+    name.className = "ex-name";
+    name.textContent = "Registro desta corrida";
+    const scheme = document.createElement("span");
+    scheme.className = "ex-scheme";
+    scheme.textContent = "alvo " + cur.reps;
+    head.appendChild(name);
+    head.appendChild(scheme);
+    card.appendChild(head);
+
+    const form = document.createElement("div");
+    form.className = "run-form";
+    const dist = makeRunInput(ui.week, "dist", false, "Distância", "km");
+    const time = makeRunInput(ui.week, "time", false, "Tempo", "min");
+    const cycles = makeRunInput(ui.week, "cycles", true, "Ciclos feitos", "");
+    form.appendChild(dist.wrap);
+    form.appendChild(time.wrap);
+    form.appendChild(cycles.wrap);
+    card.appendChild(form);
+
+    // Meta a bater: corrida anterior mais recente.
+    const prevRun = findPreviousRun(ui.week);
+    const prev = document.createElement("div");
+    prev.className = "prev";
+    prev.style.marginTop = "10px";
+    if (prevRun) {
+      const parts = [];
+      if (prevRun.dist != null) parts.push(fmt(prevRun.dist, false) + " km");
+      if (prevRun.time != null) parts.push(fmt(prevRun.time, false) + " min");
+      if (prevRun.cycles != null) parts.push(fmt(prevRun.cycles, true) + " ciclos");
+      prev.textContent = `↳ última vez (S${prevRun.week}): ${parts.join(" · ")}`;
+      const copyBtn = document.createElement("button");
+      copyBtn.className = "copy-btn";
+      copyBtn.type = "button";
+      copyBtn.textContent = "copiar";
+      copyBtn.style.gridColumn = "auto";
+      copyBtn.setAttribute("aria-label", "Copiar valores da corrida anterior");
+      copyBtn.addEventListener("click", () => {
+        [["dist", dist, false], ["time", time, false], ["cycles", cycles, true]].forEach(([f, ref, isInt]) => {
+          if (prevRun[f] != null) {
+            ref.input.value = fmt(prevRun[f], isInt);
+            setRunField(ui.week, f, prevRun[f]);
+          }
+        });
+      });
+      const prevRow = document.createElement("div");
+      prevRow.style.display = "flex";
+      prevRow.style.alignItems = "center";
+      prevRow.style.justifyContent = "space-between";
+      prevRow.style.gap = "8px";
+      prevRow.style.marginTop = "10px";
+      prevRow.appendChild(prev);
+      prev.style.marginTop = "0";
+      prevRow.appendChild(copyBtn);
+      card.appendChild(prevRow);
+    } else {
+      prev.className = "prev empty";
+      prev.textContent = "↳ sem corrida anterior";
+      card.appendChild(prev);
+    }
+
+    frag.appendChild(card);
+
+    // Limpar corrida da semana atual.
+    const clearWrap = document.createElement("div");
+    clearWrap.style.marginTop = "8px";
+    const clearBtn = document.createElement("button");
+    clearBtn.className = "btn danger full";
+    clearBtn.textContent = "Limpar corrida (Semana " + ui.week + ")";
+    clearBtn.addEventListener("click", () => clearRun(ui.week));
+    clearWrap.appendChild(clearBtn);
+    frag.appendChild(clearWrap);
 
     frag.appendChild(renderTools());
     return frag;
@@ -755,6 +890,14 @@
     render();
   }
 
+  function clearRun(week) {
+    if (!runHasData(getRun(week))) { alert("Esta corrida já está vazia."); return; }
+    if (!confirm(`Limpar o registro da corrida da Semana ${week}? Não dá para desfazer.`)) return;
+    delete state.runs[week];
+    saveState();
+    render();
+  }
+
   function exportJSON() {
     state.lastExport = Date.now();
     saveState();
@@ -787,6 +930,7 @@
           lastExport: data.lastExport ?? null,
           entries: data.entries,
           setCounts: (data.setCounts && typeof data.setCounts === "object") ? data.setCounts : {},
+          runs: (data.runs && typeof data.runs === "object") ? data.runs : {},
         };
         saveState();
         render();

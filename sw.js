@@ -1,5 +1,5 @@
 // Service worker do "Progressão" — precache do shell + cache-first (offline).
-const CACHE_VERSION = 'progressao-v1';
+const CACHE_VERSION = 'progressao-v2';
 const SHELL = [
   './',
   './index.html',
