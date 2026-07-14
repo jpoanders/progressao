@@ -177,6 +177,16 @@
     .copy-btn:disabled { opacity: 0.35; cursor: default; }
 
     .ex-actions { margin-top: 12px; }
+    .set-stepper { display: flex; align-items: center; gap: 12px; }
+    .btn.step {
+      min-width: 44px;
+      padding: 0;
+      font-size: 22px;
+      line-height: 1;
+      font-weight: 700;
+    }
+    .btn.step:disabled { opacity: 0.35; cursor: default; }
+    .step-label { font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 64px; text-align: center; }
     .btn {
       min-height: var(--tap);
       padding: 0 16px;
@@ -331,11 +341,16 @@
       if (raw) {
         const s = JSON.parse(raw);
         if (s && typeof s === "object" && s.entries) {
-          return { version: 1, lastExport: s.lastExport ?? null, entries: s.entries };
+          return {
+            version: 1,
+            lastExport: s.lastExport ?? null,
+            entries: s.entries,
+            setCounts: (s.setCounts && typeof s.setCounts === "object") ? s.setCounts : {},
+          };
         }
       }
     } catch (e) { /* estado corrompido — recomeça limpo */ }
-    return { version: 1, lastExport: null, entries: {} };
+    return { version: 1, lastExport: null, entries: {}, setCounts: {} };
   }
 
   function saveState() {
@@ -404,6 +419,39 @@
       if (e && (e.kg != null || e.reps != null)) return { week: w, ...e };
     }
     return null;
+  }
+
+  /* ---------------- Séries ajustáveis (por semana+dia+exercício) ---------- */
+  const MIN_SETS = 1, MAX_SETS = 8;
+  function setCountKey(week, dayId, exId) { return `${week}|${dayId}|${exId}`; }
+  function clampSets(n) { return Math.min(MAX_SETS, Math.max(MIN_SETS, n)); }
+
+  // Contagem atual de séries: valor customizado ou o padrão do plano (ex.sets).
+  function getSetCount(week, dayId, ex) {
+    const v = state.setCounts[setCountKey(week, dayId, ex.id)];
+    return clampSets(Number.isFinite(v) ? v : ex.sets);
+  }
+
+  function changeSetCount(week, dayId, ex, delta) {
+    const cur = getSetCount(week, dayId, ex);
+    const next = clampSets(cur + delta);
+    if (next === cur) return;
+
+    // Ao remover, a última série some: confirma se ela tem dados e apaga a entry.
+    if (next < cur) {
+      const lastIdx = cur - 1;
+      if (getEntry(week, dayId, ex.id, lastIdx)) {
+        if (!confirm(`A ${cur}ª série de "${ex.nome}" tem dados que serão apagados. Remover mesmo assim?`)) return;
+      }
+      delete state.entries[keyFor(week, dayId, ex.id, lastIdx)];
+    }
+
+    const k = setCountKey(week, dayId, ex.id);
+    if (next === ex.sets) delete state.setCounts[k]; // volta ao default implícito
+    else state.setCounts[k] = next;
+
+    saveState();
+    render();
   }
 
   /* ---------------- Render ---------------- */
@@ -495,7 +543,8 @@
       const sets = document.createElement("div");
       sets.className = "sets";
 
-      for (let s = 0; s < ex.sets; s++) {
+      const count = getSetCount(ui.week, day.id, ex);
+      for (let s = 0; s < count; s++) {
         const row = document.createElement("div");
         row.className = "set-row";
 
@@ -549,6 +598,33 @@
 
       const actions = document.createElement("div");
       actions.className = "ex-actions";
+      const stepper = document.createElement("div");
+      stepper.className = "set-stepper";
+
+      const minus = document.createElement("button");
+      minus.type = "button";
+      minus.className = "btn step";
+      minus.textContent = "−";
+      minus.setAttribute("aria-label", "Remover série de " + ex.nome);
+      minus.disabled = count <= MIN_SETS;
+      minus.addEventListener("click", () => changeSetCount(ui.week, day.id, ex, -1));
+
+      const label = document.createElement("span");
+      label.className = "step-label";
+      label.textContent = count + (count === 1 ? " série" : " séries");
+
+      const plus = document.createElement("button");
+      plus.type = "button";
+      plus.className = "btn step";
+      plus.textContent = "+";
+      plus.setAttribute("aria-label", "Adicionar série a " + ex.nome);
+      plus.disabled = count >= MAX_SETS;
+      plus.addEventListener("click", () => changeSetCount(ui.week, day.id, ex, +1));
+
+      stepper.appendChild(minus);
+      stepper.appendChild(label);
+      stepper.appendChild(plus);
+      actions.appendChild(stepper);
       card.appendChild(actions);
 
       frag.appendChild(card);
@@ -664,13 +740,16 @@
     if (!day) return;
     const count = day.exercises.reduce((acc, ex) => {
       let c = 0;
-      for (let s = 0; s < ex.sets; s++) if (getEntry(week, dayId, ex.id, s)) c++;
+      for (let s = 0; s < getSetCount(week, dayId, ex); s++) if (getEntry(week, dayId, ex.id, s)) c++;
       return acc + c;
     }, 0);
-    if (count === 0) { alert("Este dia já está vazio."); return; }
-    if (!confirm(`Limpar ${count} registro(s) da Semana ${week}, ${day.nome}? Não dá para desfazer.`)) return;
+    // Contagens de séries customizadas também "sujam" o dia (serão resetadas).
+    const hasCustomSets = day.exercises.some((ex) => state.setCounts[setCountKey(week, dayId, ex.id)] != null);
+    if (count === 0 && !hasCustomSets) { alert("Este dia já está vazio."); return; }
+    if (!confirm(`Limpar a Semana ${week}, ${day.nome}? Apaga ${count} registro(s) e volta as séries ao padrão. Não dá para desfazer.`)) return;
     day.exercises.forEach((ex) => {
-      for (let s = 0; s < ex.sets; s++) delete state.entries[keyFor(week, dayId, ex.id, s)];
+      for (let s = 0; s < getSetCount(week, dayId, ex); s++) delete state.entries[keyFor(week, dayId, ex.id, s)];
+      delete state.setCounts[setCountKey(week, dayId, ex.id)]; // volta ao padrão
     });
     saveState();
     render();
@@ -703,7 +782,12 @@
           throw new Error("formato inválido");
         }
         if (!confirm("Importar vai SUBSTITUIR todo o progresso atual. Continuar?")) { ev.target.value = ""; return; }
-        state = { version: 1, lastExport: data.lastExport ?? null, entries: data.entries };
+        state = {
+          version: 1,
+          lastExport: data.lastExport ?? null,
+          entries: data.entries,
+          setCounts: (data.setCounts && typeof data.setCounts === "object") ? data.setCounts : {},
+        };
         saveState();
         render();
         alert("Progresso importado com sucesso.");
