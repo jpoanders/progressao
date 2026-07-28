@@ -51,6 +51,8 @@ export default {
       weekTag: "s{n}",
       useLastStrength: "Usar a semana {week}: {kg} × {reps}, {set}ª série",
       useLastCardio: "Usar a semana {week}: {dist} · {time}, {set}ª série",
+      useOlderStrength: "Usar {kg} × {reps} de um bloco anterior, {set}ª série",
+      useOlderCardio: "Usar {dist} · {time} de um bloco anterior, {set}ª série",
       previousEmpty: "Sem registro anterior para a {set}ª série",
       gain: {
         kg: "+{n} kg",

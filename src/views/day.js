@@ -1,9 +1,9 @@
 import { el, fragment } from "../dom.js";
-import { formatNumber, roundNumber } from "../format.js";
+import { formatAge, formatNumber, roundNumber } from "../format.js";
 import { INTEGER_FIELDS, entryFields, exerciseKind } from "../catalog.js";
 import { MAX_SETS, MIN_SETS, dayNumber, displayName, slotName } from "../plan.js";
 import { setGain } from "../progress.js";
-import { ordinal, t } from "../i18n/index.js";
+import { activeLocale, ordinal, t } from "../i18n/index.js";
 import { numericField } from "./fields.js";
 
 /** The unit shown after a logged value in the spoken label. Reps are a bare count. */
@@ -79,6 +79,23 @@ function setRow({ store, planId, week, slot, setIndex }) {
   const kind = exerciseKind(slot.exerciseId);
   const previous = store.findPrevious(planId, week, slot.id, setIndex);
 
+  // A record from an older block has no week number that means anything here, so the tag
+  // shows its age instead. Pre-schema-3 records carry no timestamp and get no tag.
+  const fromOtherBlock = previous?.source === "other";
+  const tagText = () => {
+    if (!previous) return "";
+    if (fromOtherBlock) return formatAge(previous.at, activeLocale());
+    return t("exercise.weekTag", { n: previous.week });
+  };
+
+  const useKey = fromOtherBlock
+    ? kind === "cardio"
+      ? "exercise.useOlderCardio"
+      : "exercise.useOlderStrength"
+    : kind === "cardio"
+      ? "exercise.useLastCardio"
+      : "exercise.useLastStrength";
+
   const ghostId = (field) => `ghost-${slot.id}-${setIndex}-${field}`;
 
   const ghost = el(
@@ -88,7 +105,7 @@ function setRow({ store, planId, week, slot, setIndex }) {
       class: "set-ghost",
       disabled: !previous,
       "aria-label": previous
-        ? t(kind === "cardio" ? "exercise.useLastCardio" : "exercise.useLastStrength", {
+        ? t(useKey, {
             week: previous.week,
             set: setIndex + 1,
             ...Object.fromEntries(fields.map((field) => [field, spokenValue(previous, field)])),
@@ -109,10 +126,7 @@ function setRow({ store, planId, week, slot, setIndex }) {
         }),
       () => el("span", { class: "pair", text: t(`exercise.pair.${kind}`) }),
     ),
-    el("span", {
-      class: "ghost-week",
-      text: previous ? t("exercise.weekTag", { n: previous.week }) : "",
-    }),
+    el("span", { class: "ghost-week", text: tagText() }),
   );
 
   const gainBadge = el("span", { class: "gain", "aria-hidden": "true" });

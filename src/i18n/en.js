@@ -61,6 +61,10 @@ export default {
       weekTag: "w{n}",
       useLastStrength: "Use week {week}: {kg} × {reps}, set {set}",
       useLastCardio: "Use week {week}: {dist} · {time}, set {set}",
+      // The block a record came from is not named: the tag beside it already says how long
+      // ago, and a plan name would not fit the row.
+      useOlderStrength: "Use {kg} × {reps} from an earlier block, set {set}",
+      useOlderCardio: "Use {dist} · {time} from an earlier block, set {set}",
       previousEmpty: "No record yet for set {set}",
       // All three take {n} — the plural entry needs that name, and one name keeps the
       // caller from having to know which field it is looking up.
