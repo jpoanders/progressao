@@ -1,2 +1,7 @@
 .DS_Store
 Thumbs.db
+
+# Agent scratch: worktrees and per-plan implementation artifacts. Never shipped —
+# GitHub Pages serves the repo root, so anything tracked here would be published.
+.claude/worktrees/
+.superpowers/
