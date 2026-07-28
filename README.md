@@ -8,7 +8,7 @@ Built-in plan: 4 weeks, 4 strength days plus a progressive walk-run.
 
 Interface available in **English** and **Português (Brasil)**, switchable in the app.
 
-**Live app:** https://jpoanders.github.io/progressao/
+**Live app:** https://jpoanders.github.io/progression/
 
 ---
 
@@ -17,7 +17,7 @@ Interface available in **English** and **Português (Brasil)**, switchable in th
 iOS does **not** show an automatic install prompt — the app has an in-app reminder, but
 the step is manual:
 
-1. Open **https://jpoanders.github.io/progressao/** in **Safari** (only Safari can install
+1. Open **https://jpoanders.github.io/progression/** in **Safari** (only Safari can install
    a PWA on iOS).
 2. Tap **Share** (the square with an arrow pointing up).
 3. Choose **"Add to Home Screen"**.
@@ -33,7 +33,7 @@ The app is plain static files. The only requirement is serving over HTTP — ser
 and ES modules do not work from `file://`; `localhost` is fine:
 
 ```bash
-cd progressao
+cd progression
 python3 -m http.server 8080   # or: npm run serve
 ```
 
@@ -63,7 +63,7 @@ breaking offline mode.
 ## Publishing (GitHub Pages)
 
 The app is served by GitHub Pages from the root of the `main` branch of
-`jpoanders/progressao`. To publish updates:
+`jpoanders/progression`. To publish updates:
 
 ```bash
 git push
