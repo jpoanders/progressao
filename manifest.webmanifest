@@ -1,7 +1,7 @@
 {
-  "name": "Progressão",
-  "short_name": "Progressão",
-  "description": "Registro de treino de musculação — mira em bater a carga anterior.",
+  "name": "Progression",
+  "short_name": "Progression",
+  "description": "Strength training log — aimed at beating your previous load.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

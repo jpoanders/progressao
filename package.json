@@ -1,0 +1,11 @@
+{
+  "name": "progression",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Strength training log PWA — static files, no build step, no dependencies.",
+  "scripts": {
+    "test": "node --test",
+    "serve": "python3 -m http.server 8080"
+  }
+}

@@ -1,131 +1,188 @@
-# Progressão
+# Progression
 
-Web app leve (PWA) para registrar carga e repetições de treino de musculação,
-otimizado para uso no celular na academia. O foco é uma coisa: ao abrir um
-exercício, você vê **o que fez da última vez** naquele mesmo exercício (a "meta
-a bater") para progredir a carga.
+Lightweight web app (PWA) for logging strength-training loads and reps, built for phone
+use in the gym. It does one thing well: when you open an exercise, you see **what you did
+last time** on that same exercise — the target to beat — so you can add load.
 
-Plano embutido: 4 semanas, 4 dias de força + corrida (walk-run progressivo).
+Built-in plan: 4 weeks, 4 strength days plus a progressive walk-run.
 
-**App no ar:** https://jpoanders.github.io/progressao/
+Interface available in **English** and **Português (Brasil)**, switchable in the app.
+
+**Live app:** https://jpoanders.github.io/progressao/
 
 ---
 
-## Como instalar como PWA no iPhone (obrigatório no iOS via Safari)
+## Installing as a PWA on iPhone (required on iOS, via Safari)
 
-O iOS **não** mostra prompt automático de instalação — o app tem um lembrete
-interno, mas o passo é manual:
+iOS does **not** show an automatic install prompt — the app has an in-app reminder, but
+the step is manual:
 
-1. Abra **https://jpoanders.github.io/progressao/** no **Safari** (só o Safari
-   instala PWA no iOS).
-2. Toque no botão **Compartilhar** (quadrado com seta pra cima).
-3. Escolha **"Adicionar à Tela de Início"**.
-4. Abra pelo ícone na tela inicial — ele roda em tela cheia, sem a barra do
-   Safari, respeitando o notch/Dynamic Island e a barra inferior, e **funciona
-   offline** (o service worker cacheia o app na primeira visita).
+1. Open **https://jpoanders.github.io/progressao/** in **Safari** (only Safari can install
+   a PWA on iOS).
+2. Tap **Share** (the square with an arrow pointing up).
+3. Choose **"Add to Home Screen"**.
+4. Launch it from the home-screen icon — it runs full screen, without Safari's chrome,
+   respecting the notch/Dynamic Island and the home indicator, and **works offline** (the
+   service worker caches the app on first visit).
 
-No Android/Chrome, use o menu → "Instalar app" / "Adicionar à tela inicial".
+On Android/Chrome, use the menu → "Install app" / "Add to Home screen".
 
-## Como rodar localmente
+## Running locally
 
-O app é só arquivos estáticos. O único requisito é servir por HTTP (o service
-worker não funciona abrindo o arquivo direto via `file://`; `localhost` serve):
+The app is plain static files. The only requirement is serving over HTTP — service workers
+and ES modules do not work from `file://`; `localhost` is fine:
 
 ```bash
 cd progressao
-python3 -m http.server 8080
+python3 -m http.server 8080   # or: npm run serve
 ```
 
-Abra `http://localhost:8080` no navegador. Para testar como no celular, use o
-modo dispositivo do DevTools (Chrome: `Ctrl/Cmd+Shift+M`).
+Open `http://localhost:8080`. To approximate a phone, use the browser's device mode
+(Chrome: `Ctrl/Cmd+Shift+M`).
 
-Qualquer servidor estático serve igual (`npx serve`, Nginx, GitHub Pages, etc.).
+Any static server works the same (`npx serve`, Nginx, GitHub Pages, …).
 
-> Nota: o service worker exige contexto seguro (HTTPS ou `localhost`). Ao abrir
-> pelo IP da máquina na rede (ex.: `http://192.168.0.7:8080`) o SW **não**
-> registra — a interface funciona, mas sem offline/instalação. Para PWA completo
-> em outro aparelho, use a URL pública acima ou um túnel HTTPS.
+> Note: service workers require a secure context (HTTPS or `localhost`). Opening the app
+> via the machine's LAN address (e.g. `http://192.168.0.7:8080`) will **not** register the
+> service worker — the UI works, but without offline support or installation. For a full
+> PWA on another device, use the public URL above or an HTTPS tunnel.
 
-## Publicação (GitHub Pages)
+## Tests
 
-O app está hospedado no GitHub Pages a partir da raiz da branch `main` do
-repositório `jpoanders/progressao`. Para publicar atualizações:
+```bash
+npm test        # or: node --test
+```
+
+Node's built-in test runner — **no dependencies are installed and none are shipped**. The
+tests cover the pure logic: number parsing and formatting, the previous-record lookup, set
+counts, state normalization, backup import validation, locale resolution, and translation
+key parity between locales. They also assert that `sw.js` precaches every shipped file, so
+adding a module without updating the service worker fails the build rather than silently
+breaking offline mode.
+
+## Publishing (GitHub Pages)
+
+The app is served by GitHub Pages from the root of the `main` branch of
+`jpoanders/progressao`. To publish updates:
 
 ```bash
 git push
 ```
 
-O Pages rebuilda automaticamente em ~1 min. Ao mudar o app, incremente
-`CACHE_VERSION` em `sw.js` para que o cache do service worker seja atualizado
-nos aparelhos já instalados.
+Pages rebuilds in about a minute. **When you change any shipped file, bump
+`CACHE_VERSION` in `sw.js`**, otherwise devices that already installed the app keep
+serving the old cache.
 
 ---
 
-## Decisões técnicas
+## Technical decisions
 
-### Stack: HTML + CSS + JavaScript vanilla, sem build
-Sem framework, sem bundler, sem dependências. Justificativa: o app é pequeno e
-o requisito é rodar como arquivo(s) estático(s) sem backend. Sem etapa de build,
-o service worker fica trivial (lista fixa de arquivos) e não há nada para
-compilar, instalar ou manter atualizado. Menos peças = mais confiável offline.
+### Stack: vanilla HTML + CSS + JavaScript, no build step
+No framework, no bundler, no dependencies. The app is small and the requirement is that it
+runs as static files with no backend. With no build step there is nothing to compile,
+install or keep up to date, and the service worker stays trivial (a fixed file list).
+Fewer moving parts means more reliable offline behaviour.
 
-Arquivos:
+The code is split into native ES modules rather than kept in one file. That costs a few
+extra requests on the very first visit — after which the service worker has precached
+everything — and buys module boundaries, unit-testable pure logic, and files small enough
+to hold in your head.
 
-- `index.html` — app inteiro (CSS e JS inline, para o shell ser um só recurso).
-- `manifest.webmanifest` — metadados do PWA (nome, ícones, tela cheia).
-- `sw.js` — service worker (precache do shell, estratégia *cache-first*).
-- `icons/` — ícones PNG (180 p/ iOS, 192/512 e 512 maskable p/ o manifest).
+```
+index.html              static shell: <head>, header, banner markup, <main>, footer
+styles/app.css          all styling, including the dark-mode palette and safe-area insets
+src/main.js             entry point: collects the DOM, starts the app, registers the SW
+src/app.js              orchestration: rendering and the destructive/IO actions
+src/state.js            persistence, the storage schema, and pure state helpers
+src/plan.js             the training plan as pure data (ids, set counts, rep ranges)
+src/format.js           number parsing and locale-aware display formatting
+src/dom.js              a small element builder
+src/views/              view builders (selectors, day, running, tools, banners, fields)
+src/i18n/               locale registry, t(), and one module per language
+sw.js                   service worker: precaches the shell, serves cache-first
+icons/                  PNG icons (180 for iOS, 192/512 and 512 maskable for the manifest)
+tests/                  node --test suites
+```
 
-### Persistência: `localStorage`
-O volume de dados é minúsculo (4 semanas × 4 dias × ~6 exercícios × ~3 séries ×
-2 números). Para esse tamanho, `localStorage` é a escolha certa: API síncrona,
-código simples, sem estado assíncrono para dar errado, e o estado inteiro é um
-único JSON — o que torna export/import triviais. IndexedDB seria overkill aqui.
+### Internationalization
+All user-facing text lives in `src/i18n/<locale>.js`; view code contains no literal
+strings, including `aria-label`s, placeholders and confirmation dialogs.
 
-O salvamento é **automático**: cada vez que você edita um campo, o valor é
-gravado na hora (não existe botão "salvar").
+- Plural forms come from `Intl.PluralRules`, never a hand-written `n === 1` check — which
+  is wrong in most languages, including Portuguese, where zero takes the singular.
+- Ordinals ("1st" / "1ª") are a per-locale function, since the rule differs by language.
+- Dates use the active locale via `Intl`. Number *input* stays locale-independent: a comma
+  is always accepted as a decimal separator, because phone keyboards vary.
+- The language is resolved from `navigator.languages` on first run and falls back to
+  English. An explicit choice (Settings, at the bottom of any screen) is remembered and
+  wins from then on. Switching re-renders immediately — it never touches training data.
 
-### ⚠️ iOS apaga storage após ~7 dias — por isso, faça backup
-No iPhone (WebKit), tanto `localStorage` quanto IndexedDB podem ser **apagados
-automaticamente após ~7 dias sem uso do site**. Duas defesas:
+**To add a locale:** copy `src/i18n/en.js`, translate it, then import it and add one entry
+to `LOCALES` in `src/i18n/index.js`. The language picker is built from that registry, so
+there is no UI to update. `tests/i18n.test.js` will fail if any key is missing, extra, or
+lacking a plural form the language requires. Add the new file to `SHELL` in `sw.js`.
 
-1. **Instale o app na tela inicial** (passo a passo acima). No modo standalone,
-   essa limpeza automática é drasticamente reduzida.
-2. **Exporte o backup de tempos em tempos.** O app mostra um lembrete leve
-   quando o último backup passou de ~7 dias.
+`manifest.webmanifest` cannot be localized — it is static JSON read before the app runs,
+and its `name` is what iOS shows under the home-screen icon. It stays English-only.
 
-## Como fazer backup do progresso
+### Persistence: `localStorage`
+The data volume is tiny (4 weeks × 4 days × ~6 exercises × ~3 sets × 2 numbers). At that
+size `localStorage` is the right call: a synchronous API, simple code, no async state to
+get wrong, and the whole state is a single JSON object — which makes export/import
+trivial. IndexedDB would be overkill.
 
-Na parte de baixo de qualquer tela há a seção **Backup**:
+Saving is **automatic**: every field edit is written immediately. There is no save button.
 
-- **Exportar JSON** — baixa um arquivo `progressao-backup-AAAA-MM-DD.json` com
-  100% do seu progresso. Guarde onde quiser (e-mail para você mesmo, iCloud
-  Drive, Google Drive, etc.).
-- **Importar JSON** — selecione um backup exportado para **restaurar tudo**.
-  A importação substitui o progresso atual (pede confirmação antes).
+### The storage schema is frozen
+Keys inside storage — `progressao:v1`, `progressao:ui`, the day ids `d1`–`d4`, and the
+Portuguese exercise ids such as `supino-reto` — are **opaque identifiers, not labels**.
+They exist in every install and in every backup file ever exported, so they are deliberately
+left in Portuguese even though the codebase is English. Renaming one would orphan real
+training history. Display names are resolved from these ids at render time through
+`src/i18n`. See the header comment in `src/state.js`. Only ever add fields — never rename
+or repurpose one.
 
-Dica: exporte depois de treinos importantes e antes de trocar de aparelho ou
-limpar o navegador.
+### ⚠️ iOS clears storage after ~7 days — so make backups
+On iPhone (WebKit), both `localStorage` and IndexedDB can be **wiped automatically after
+about 7 days without visiting the site**. Two defences:
+
+1. **Install the app to the home screen** (steps above). In standalone mode this automatic
+   eviction is drastically reduced.
+2. **Export a backup now and then.** The app shows a gentle reminder once the last backup
+   is more than ~7 days old.
+
+## Backing up your progress
+
+At the bottom of any screen there is a **Backup** section:
+
+- **Export JSON** — downloads `progression-backup-YYYY-MM-DD.json` containing 100% of your
+  progress. Keep it wherever you like (email it to yourself, iCloud Drive, Google Drive…).
+- **Import JSON** — pick an exported backup to **restore everything**. Importing replaces
+  current progress (it asks for confirmation first). Backups exported by older versions of
+  the app still import: the file format has not changed.
+
+Tip: export after important sessions, and before switching devices or clearing your browser.
 
 ---
 
-## Como usar
+## How to use it
 
-1. Escolha a **Semana** (S1–S4) e o **Dia** (Dia 1–4, ou **Corrida**) no topo.
-2. Em cada exercício, preencha **kg** e **reps** de cada série. Salva sozinho.
-3. Abaixo de cada série aparece a **meta a bater** — o registro da vez anterior
-   mais recente daquele mesmo exercício/série (idealmente a semana passada).
-   Toque em **copiar** para trazer os valores anteriores e então superá-los.
-4. **Séries ajustáveis:** use o `−` / `+` no rodapé de cada exercício para
-   remover ou adicionar séries (limites 1 a 8). Começa no valor do plano; o
-   ajuste vale **por semana** (S1 pode ter 4 séries e S2 seguir com 3). Remover
-   uma série com dados pede confirmação. O `3×6-8` ao lado do nome continua sendo
-   a faixa de reps **prescrita** de referência — a contagem real aparece no
-   controle de séries.
-5. **Corrida** mostra só o protocolo da semana, sem campos.
-6. **Limpar este dia** apaga os registros do dia/semana atuais e volta o número
-   de séries ao padrão do plano (com confirmação).
+1. Pick the **Week** (W1–W4) and the **Day** (Day 1–4, or **Run**) at the top.
+2. For each exercise, fill in **kg** and **reps** per set. It saves itself.
+3. Under each set you see the **target to beat** — your most recent record for that same
+   exercise and set (ideally last week). Tap **copy** to pull the previous values in, then
+   beat them.
+4. **Adjustable sets:** use `−` / `+` at the bottom of each exercise card to remove or add
+   sets (limits 1 to 8). It starts at the plan's value, and the adjustment applies **per
+   week** (W1 can have 4 sets while W2 stays at 3). Removing a set that holds data asks for
+   confirmation. The `3×6-8` beside the name remains the **prescribed** rep range for
+   reference — the actual count is shown by the set stepper.
+5. **Run** shows the week's protocol plus fields to log distance, time and cycles, with the
+   same target-to-beat hint as the strength days.
+6. **Clear this day** erases the current day/week's records and returns the set counts to
+   the plan default (with confirmation).
+7. **Settings**, at the bottom, switches the interface language.
 
-## Fora de escopo (v1)
-Sem gráficos, estatística de volume, cálculo de progressão/deload, contas de
-usuário, sincronização em nuvem ou timers. De propósito enxuto.
+## Out of scope (v1)
+No charts, volume statistics, progression/deload maths, user accounts, cloud sync or
+timers. Deliberately lean.
