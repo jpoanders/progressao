@@ -5,10 +5,10 @@
  *
  * localStorage["progression:v2"]  the training log
  *   {
- *     version: 2,
+ *     version: 3,
  *     lastExport: number | null,          // epoch ms of the last JSON export
  *     plans:     [Plan],                  // the user's plans — see src/plan.js
- *     entries:   { "<planId>|<week>|<slotId>|<setIndex>": { kg, reps } | { dist, time } },
+ *     entries:   { "<planId>|<week>|<slotId>|<setIndex>": { kg, reps, at? } | { dist, time, at? } },
  *     setCounts: { "<planId>|<week>|<slotId>": number }   // only when != the plan's
  *   }
  *
@@ -17,6 +17,13 @@
  *
  * Plans live in the log rather than in preferences for one reason: they are user data, so
  * they belong in the backup file. Preferences only remember *where you were*.
+ *
+ * `at` is epoch ms of the last write to that record. It exists so records can be ordered
+ * across plans, where week numbers are meaningless — see findPrevious. It is absent on
+ * records written before schema 3, which sort below any timestamped record.
+ *
+ * The key stays "progression:v2" at schema 3 on purpose: the key names the storage slot,
+ * not the schema revision, and renaming it would strand every existing log.
  *
  * ── Records are plan-scoped ──────────────────────────────────────────────────────────
  * Every key starts with a plan id, and the previous-record lookup never leaves the plan
@@ -33,7 +40,7 @@ import { MAX_SETS, clampSets, defaultPlan, findPlan, normalizePlan, weeksOf } fr
 export const STATE_KEY = "progression:v2";
 export const PREFS_KEY = "progression:ui";
 
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 
 export function entryKey(planId, week, slotId, setIndex) {
   return `${planId}|${week}|${slotId}|${setIndex}`;
@@ -102,7 +109,12 @@ function normalizeEntry(raw, slot) {
     entry[field] = asNumber(raw[field]);
     if (entry[field] != null) filled = true;
   }
-  return filled ? entry : null;
+  if (!filled) return null;
+
+  // Carried after the fill check: a bare timestamp is not a record. Omitted rather than
+  // stored as null so records written before schema 3 stay byte-identical.
+  if (Number.isFinite(raw.at)) entry.at = raw.at;
+  return entry;
 }
 
 function normalizePlans(raw) {
@@ -263,7 +275,7 @@ function readJSON(storage, key) {
  *
  * Every mutator writes through immediately — the app has no explicit save action.
  */
-export function createStore(storage = globalThis.localStorage) {
+export function createStore(storage = globalThis.localStorage, { now = () => Date.now() } = {}) {
   let state = normalizeState(readJSON(storage, STATE_KEY));
   let prefs = normalizePrefs(readJSON(storage, PREFS_KEY));
 
@@ -325,8 +337,12 @@ export function createStore(storage = globalThis.localStorage) {
       const entry = { ...state.entries[key] };
       entry[field] = value;
 
-      if (entryHasData(entry)) state.entries[key] = entry;
-      else delete state.entries[key];
+      if (entryHasData(entry)) {
+        entry.at = now();
+        state.entries[key] = entry;
+      } else {
+        delete state.entries[key];
+      }
       saveState();
     },
 

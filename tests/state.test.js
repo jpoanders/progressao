@@ -187,6 +187,31 @@ describe("normalizeState", () => {
   it("drops a non-numeric lastExport", () => {
     assert.equal(normalizeState({ entries: {}, lastExport: "yesterday" }).lastExport, null);
   });
+
+  it("keeps a record's timestamp", () => {
+    const normalized = normalizeState(
+      stateWith(plan, { entries: { "p1|1|s-bench|0": { kg: 60, reps: 8, at: 1753660800000 } } }),
+    );
+    assert.deepEqual(normalized.entries["p1|1|s-bench|0"], {
+      kg: 60,
+      reps: 8,
+      at: 1753660800000,
+    });
+  });
+
+  it("drops a timestamp that is not a number", () => {
+    const normalized = normalizeState(
+      stateWith(plan, { entries: { "p1|1|s-bench|0": { kg: 60, reps: 8, at: "yesterday" } } }),
+    );
+    assert.deepEqual(normalized.entries["p1|1|s-bench|0"], { kg: 60, reps: 8 });
+  });
+
+  it("does not treat a timestamp on its own as data worth keeping", () => {
+    const normalized = normalizeState(
+      stateWith(plan, { entries: { "p1|1|s-bench|0": { at: 1753660800000 } } }),
+    );
+    assert.equal(normalized.entries["p1|1|s-bench|0"], undefined);
+  });
 });
 
 describe("parseBackup", () => {
@@ -355,13 +380,13 @@ describe("counting records", () => {
 describe("logging", () => {
   it("writes a field through immediately and drops a row left empty", () => {
     const storage = fakeStorage({ [STATE_KEY]: JSON.stringify(stateWith(testPlan())) });
-    const store = createStore(storage);
+    const store = createStore(storage, { now: () => 1000 });
 
     store.setEntryField("p1", 1, "s-bench", 0, "kg", 60);
-    assert.deepEqual(storage.read(STATE_KEY).entries["p1|1|s-bench|0"], { kg: 60 });
+    assert.deepEqual(storage.read(STATE_KEY).entries["p1|1|s-bench|0"], { kg: 60, at: 1000 });
 
     store.setEntryField("p1", 1, "s-bench", 0, "reps", 8);
-    assert.deepEqual(store.getEntry("p1", 1, "s-bench", 0), { kg: 60, reps: 8 });
+    assert.deepEqual(store.getEntry("p1", 1, "s-bench", 0), { kg: 60, reps: 8, at: 1000 });
 
     store.setEntryField("p1", 1, "s-bench", 0, "kg", null);
     store.setEntryField("p1", 1, "s-bench", 0, "reps", null);
@@ -397,6 +422,41 @@ describe("logging", () => {
 
     assert.deepEqual(Object.keys(store.state.entries).sort(), ["p1|1|s-run|0", "p1|2|s-bench|0"]);
     assert.deepEqual(store.state.setCounts, {});
+  });
+});
+
+describe("a record's timestamp", () => {
+  it("is stamped from the injected clock on every write", () => {
+    const store = createStore(fakeStorage({ [STATE_KEY]: JSON.stringify(stateWith(testPlan())) }), {
+      now: () => 1000,
+    });
+
+    store.setEntryField("p1", 1, "s-bench", 0, "kg", 60);
+    assert.deepEqual(store.getEntry("p1", 1, "s-bench", 0), { kg: 60, at: 1000 });
+  });
+
+  it("moves forward when the record is edited again", () => {
+    let clock = 1000;
+    const store = createStore(fakeStorage({ [STATE_KEY]: JSON.stringify(stateWith(testPlan())) }), {
+      now: () => clock,
+    });
+
+    store.setEntryField("p1", 1, "s-bench", 0, "kg", 60);
+    clock = 2000;
+    store.setEntryField("p1", 1, "s-bench", 0, "reps", 8);
+
+    assert.deepEqual(store.getEntry("p1", 1, "s-bench", 0), { kg: 60, reps: 8, at: 2000 });
+  });
+
+  it("goes away with the record when the last field is cleared", () => {
+    const store = createStore(fakeStorage({ [STATE_KEY]: JSON.stringify(stateWith(testPlan())) }), {
+      now: () => 1000,
+    });
+
+    store.setEntryField("p1", 1, "s-bench", 0, "kg", 60);
+    store.setEntryField("p1", 1, "s-bench", 0, "kg", null);
+
+    assert.equal(store.getEntry("p1", 1, "s-bench", 0), null, "a bare timestamp is not a record");
   });
 });
 
@@ -551,12 +611,12 @@ describe("preferences", () => {
 describe("a failing storage", () => {
   it("keeps the session usable instead of throwing", () => {
     const storage = fakeStorage();
-    const store = createStore(storage);
+    const store = createStore(storage, { now: () => 1000 });
     storage.setItem = () => {
       throw new Error("quota exceeded");
     };
 
     store.setEntryField("plan-default", 1, "d1-s1", 0, "kg", 60);
-    assert.deepEqual(store.getEntry("plan-default", 1, "d1-s1", 0), { kg: 60 });
+    assert.deepEqual(store.getEntry("plan-default", 1, "d1-s1", 0), { kg: 60, at: 1000 });
   });
 });
