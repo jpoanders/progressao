@@ -390,6 +390,7 @@ footer {
   letter-spacing: 0.06em;
   color: var(--ghost);
   text-align: right;
+  white-space: nowrap;
 }
 
 /* Today. */

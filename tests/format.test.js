@@ -99,7 +99,7 @@ describe("formatAge", () => {
   // Compared against Intl rather than a hardcoded string: this asserts our unit and sign
   // choice, which is the part we wrote, without pinning the exact wording ICU produces.
   const expected = (value, unit, tag = "en") =>
-    new Intl.RelativeTimeFormat(tag, { numeric: "auto", style: "narrow" }).format(value, unit);
+    new Intl.RelativeTimeFormat(tag, { numeric: "always", style: "narrow" }).format(value, unit);
 
   it("counts minutes within the hour", () => {
     assert.equal(formatAge(NOW - 20 * MINUTE, "en", NOW), expected(-20, "minute"));

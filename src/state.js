@@ -221,6 +221,12 @@ export function entryHasData(entry) {
  * timestamp, so on the first upgrade `at` alone would leave a user's whole history in
  * arbitrary order. Plan order (plans are appended as they are created) and week make the
  * comparison total.
+ *
+ * One tie is accepted rather than resolved: two slots in the same plan, same week, sharing
+ * an exercise and set index, both without a timestamp, compare equal and fall back to
+ * insertion order. That is only reachable with pre-schema-3 data plus a duplicated exercise
+ * placement, and every tiebreaker for it (heavier load, first slot) would be a heuristic
+ * this app's doctrine says it should not invent.
  */
 function byRecency(a, b) {
   const aAt = a.entry.at ?? -Infinity;

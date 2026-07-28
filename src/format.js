@@ -57,7 +57,7 @@ const WEEK = 7 * DAY;
 const MONTH = 30 * DAY;
 
 /**
- * How long ago a record was logged, for the ghost row's tag ("3 wk. ago").
+ * How long ago a record was logged, for the ghost row's tag ("3w ago").
  *
  * Narrow style deliberately: the tag shares a 66px column with the week tag it replaces,
  * and a wider string would steal room from the inputs below it. Records written before the
@@ -70,7 +70,7 @@ export function formatAge(timestamp, localeTag, now = Date.now()) {
   if (elapsed < 0) return "";
 
   const relative = new Intl.RelativeTimeFormat(localeTag, {
-    numeric: "auto",
+    numeric: "always",
     style: "narrow",
   });
 
