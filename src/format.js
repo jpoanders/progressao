@@ -50,6 +50,37 @@ export function formatDateTime(timestamp, localeTag) {
   return `${day} ${time}`;
 }
 
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+const WEEK = 7 * DAY;
+const MONTH = 30 * DAY;
+
+/**
+ * How long ago a record was logged, for the ghost row's tag ("3 wk. ago").
+ *
+ * Narrow style deliberately: the tag shares a 66px column with the week tag it replaces,
+ * and a wider string would steal room from the inputs below it. Records written before the
+ * `at` field existed have no timestamp and get no tag rather than a wrong one.
+ */
+export function formatAge(timestamp, localeTag, now = Date.now()) {
+  if (!Number.isFinite(timestamp)) return "";
+
+  const elapsed = now - timestamp;
+  if (elapsed < 0) return "";
+
+  const relative = new Intl.RelativeTimeFormat(localeTag, {
+    numeric: "auto",
+    style: "narrow",
+  });
+
+  if (elapsed < HOUR) return relative.format(-Math.floor(elapsed / MINUTE), "minute");
+  if (elapsed < DAY) return relative.format(-Math.floor(elapsed / HOUR), "hour");
+  if (elapsed < WEEK) return relative.format(-Math.floor(elapsed / DAY), "day");
+  if (elapsed < MONTH) return relative.format(-Math.floor(elapsed / WEEK), "week");
+  return relative.format(-Math.floor(elapsed / MONTH), "month");
+}
+
 /**
  * YYYY-MM-DD stamp used in the exported backup filename.
  *

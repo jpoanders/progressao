@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { formatDateTime, formatNumber, isoDateStamp, parseNumber } from "../src/format.js";
+import { formatAge, formatDateTime, formatNumber, isoDateStamp, parseNumber } from "../src/format.js";
 
 describe("parseNumber", () => {
   it("reads plain numbers", () => {
@@ -86,5 +86,54 @@ describe("isoDateStamp", () => {
   it("uses the local date, so a late-evening export is not stamped with tomorrow", () => {
     // 23:30 local on the 27th is already the 28th in UTC anywhere west of Greenwich.
     assert.equal(isoDateStamp(new Date(2026, 6, 27, 23, 30).getTime()), "2026-07-27");
+  });
+});
+
+describe("formatAge", () => {
+  const NOW = Date.UTC(2026, 6, 28, 12, 0, 0);
+  const MINUTE = 60_000;
+  const HOUR = 60 * MINUTE;
+  const DAY = 24 * HOUR;
+  const WEEK = 7 * DAY;
+
+  // Compared against Intl rather than a hardcoded string: this asserts our unit and sign
+  // choice, which is the part we wrote, without pinning the exact wording ICU produces.
+  const expected = (value, unit, tag = "en") =>
+    new Intl.RelativeTimeFormat(tag, { numeric: "auto", style: "narrow" }).format(value, unit);
+
+  it("counts minutes within the hour", () => {
+    assert.equal(formatAge(NOW - 20 * MINUTE, "en", NOW), expected(-20, "minute"));
+  });
+
+  it("counts hours within the day", () => {
+    assert.equal(formatAge(NOW - 5 * HOUR, "en", NOW), expected(-5, "hour"));
+  });
+
+  it("counts days within the week", () => {
+    assert.equal(formatAge(NOW - 3 * DAY, "en", NOW), expected(-3, "day"));
+  });
+
+  it("counts weeks up to a month", () => {
+    assert.equal(formatAge(NOW - 3 * WEEK, "en", NOW), expected(-3, "week"));
+  });
+
+  it("counts months beyond that", () => {
+    assert.equal(formatAge(NOW - 90 * DAY, "en", NOW), expected(-3, "month"));
+  });
+
+  it("speaks the locale it is given", () => {
+    assert.equal(formatAge(NOW - 3 * WEEK, "pt-BR", NOW), expected(-3, "week", "pt-BR"));
+  });
+
+  it("has nothing to say about a record with no timestamp", () => {
+    // Records written before the `at` field existed. The ghost row still works; it just
+    // carries no age.
+    assert.equal(formatAge(null, "en", NOW), "");
+    assert.equal(formatAge(undefined, "en", NOW), "");
+    assert.equal(formatAge(Number.NaN, "en", NOW), "");
+  });
+
+  it("does not report a negative age from a clock that moved backwards", () => {
+    assert.equal(formatAge(NOW + DAY, "en", NOW), "");
   });
 });
