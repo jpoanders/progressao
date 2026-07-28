@@ -6,8 +6,9 @@ last time** on that same exercise — the target to beat — so you can add load
 
 **Plans are yours to build.** A plan sets how many weeks the block runs, how many days it
 has, and which exercises sit on each day with what sets and rep range — all editable in
-the app. Keep several plans side by side; each carries its own history, so starting a new
-block starts a clean slate. Exercises come from a built-in catalog (user-defined ones are
+the app. Keep several plans side by side. Each keeps its own history, but a lift you have logged
+before still shows its last numbers in a new block — so starting a fresh plan does not
+start from nothing. Exercises come from a built-in catalog (user-defined ones are
 next). A fresh install starts on a 4-week starter block: four strength days plus a
 walk-run.
 
