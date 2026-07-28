@@ -1,30 +1,26 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
-import { findDay } from "../src/plan.js";
+import { defaultPlan, newDay, newPlan, newSlot } from "../src/plan.js";
 import {
-  LEGACY_PREFS_KEY,
-  LEGACY_STATE_KEY,
   PREFS_KEY,
   STATE_KEY,
-  clampSetCount,
+  STATE_VERSION,
   countDayEntries,
+  countOrphans,
+  countPlanEntries,
+  countSlotEntries,
   createStore,
   emptyState,
   entryKey,
   findPrevious,
-  findPreviousRun,
   getSetCount,
   hasCustomSetCounts,
   normalizePrefs,
   normalizeState,
   parseBackup,
-  runHasData,
   setCountKey,
 } from "../src/state.js";
-
-const LEGACY_BACKUP = readFileSync(new URL("./fixtures/legacy-backup-v1.json", import.meta.url), "utf8");
 
 function fakeStorage(initial = {}) {
   const map = new Map(Object.entries(initial));
@@ -36,102 +32,150 @@ function fakeStorage(initial = {}) {
   };
 }
 
-const storeWithState = (state) =>
-  createStore(fakeStorage({ [STATE_KEY]: JSON.stringify(state) }));
+const storeWith = (state) => createStore(fakeStorage({ [STATE_KEY]: JSON.stringify(state) }));
 
-const day1 = findDay("d1");
-const benchPress = day1.exercises.find((exercise) => exercise.id === "supino-reto");
-const abs = findDay("d2").exercises.find((exercise) => exercise.id === "abdominal-d2");
+/** A two-day plan with predictable ids, so key assertions read plainly. */
+function testPlan(weeks = 4) {
+  return {
+    id: "p1",
+    name: "Test block",
+    nameKey: null,
+    weeks,
+    days: [
+      {
+        id: "day-a",
+        name: "Push",
+        nameKey: null,
+        slots: [
+          { id: "s-bench", exerciseId: "bench-press", name: null, nameKey: null, sets: 3, reps: [6, 8] },
+          { id: "s-abs", exerciseId: "abs", name: null, nameKey: null, sets: 3, reps: null },
+        ],
+      },
+      {
+        id: "day-b",
+        name: "Cardio",
+        nameKey: null,
+        slots: [
+          { id: "s-run", exerciseId: "walk-run", name: null, nameKey: null, sets: 1, reps: null },
+        ],
+      },
+    ],
+  };
+}
+
+const stateWith = (plan, extra = {}) => ({
+  version: STATE_VERSION,
+  lastExport: null,
+  plans: [plan],
+  entries: {},
+  setCounts: {},
+  ...extra,
+});
 
 describe("storage keys", () => {
-  it("are frozen — changing these orphans real user data", () => {
-    assert.equal(STATE_KEY, "progression:v1");
+  it("scopes every record to a plan", () => {
+    assert.equal(STATE_KEY, "progression:v2");
     assert.equal(PREFS_KEY, "progression:ui");
-    assert.equal(entryKey(2, "d1", "supino-reto", 0), "2|d1|supino-reto|0");
-    assert.equal(setCountKey(2, "d1", "supino-reto"), "2|d1|supino-reto");
-  });
-
-  it("keep the pre-rename keys readable for installs that predate the rename", () => {
-    assert.equal(LEGACY_STATE_KEY, "progressao:v1");
-    assert.equal(LEGACY_PREFS_KEY, "progressao:ui");
+    assert.equal(entryKey("p1", 2, "s-bench", 0), "p1|2|s-bench|0");
+    assert.equal(setCountKey("p1", 2, "s-bench"), "p1|2|s-bench");
   });
 });
 
-describe("migration off the pre-rename keys", () => {
-  const legacyState = {
-    version: 1,
-    lastExport: 123,
-    entries: { "1|d1|supino-reto|0": { kg: 60, reps: 8 } },
-    setCounts: {},
-    runs: {},
-  };
+describe("a fresh install", () => {
+  it("starts on the built-in plan, so there is something to log against", () => {
+    const store = createStore(fakeStorage());
 
-  it("adopts the log left under the old key and rewrites it under the new one", () => {
-    const storage = fakeStorage({ [LEGACY_STATE_KEY]: JSON.stringify(legacyState) });
-    const store = createStore(storage);
-
-    assert.deepEqual(store.state, legacyState, "the history must survive the rename");
-    assert.deepEqual(storage.read(STATE_KEY), legacyState);
-    assert.equal(storage.getItem(LEGACY_STATE_KEY), null, "the old key is cleared once copied");
+    assert.equal(store.plans.length, 1);
+    assert.deepEqual(store.plans[0], defaultPlan());
+    assert.deepEqual(store.state.entries, {});
   });
 
-  it("migrates preferences too", () => {
-    const storage = fakeStorage({
-      [LEGACY_PREFS_KEY]: JSON.stringify({ week: 3, day: "d2", locale: "pt-BR" }),
-    });
-    const store = createStore(storage);
-
-    assert.equal(store.prefs.week, 3);
-    assert.equal(store.prefs.locale, "pt-BR");
-    assert.equal(storage.read(PREFS_KEY).week, 3);
-    assert.equal(storage.getItem(LEGACY_PREFS_KEY), null);
-  });
-
-  it("prefers the new key and leaves the stale legacy value alone", () => {
-    const current = { ...legacyState, lastExport: 999 };
-    const storage = fakeStorage({
-      [STATE_KEY]: JSON.stringify(current),
-      [LEGACY_STATE_KEY]: JSON.stringify(legacyState),
-    });
-
-    assert.deepEqual(createStore(storage).state, current);
-    assert.deepEqual(storage.read(LEGACY_STATE_KEY), legacyState, "no write-back to the old key");
-  });
-
-  it("starts clean when the legacy key holds an unreadable blob", () => {
-    const storage = fakeStorage({ [LEGACY_STATE_KEY]: "{not json" });
-
-    assert.deepEqual(createStore(storage).state, emptyState());
-    assert.equal(storage.getItem(LEGACY_STATE_KEY), "{not json", "a corrupt blob is not destroyed");
-  });
-
-  it("keeps working when the migration write fails", () => {
-    const storage = fakeStorage({ [LEGACY_STATE_KEY]: JSON.stringify(legacyState) });
-    storage.setItem = () => {
-      throw new Error("quota exceeded");
-    };
-
-    assert.deepEqual(createStore(storage).state, legacyState, "the session still sees the log");
-    assert.deepEqual(storage.read(LEGACY_STATE_KEY), legacyState, "the original is left to retry");
+  it("is what a corrupt or unreadable state falls back to", () => {
+    assert.deepEqual(createStore(fakeStorage({ [STATE_KEY]: "{not json" })).state, emptyState());
   });
 });
 
 describe("normalizeState", () => {
+  const plan = testPlan();
+
   it("accepts a well-formed state unchanged", () => {
-    const raw = {
-      version: 1,
+    const raw = stateWith(plan, {
       lastExport: 123,
-      entries: { "1|d1|supino-reto|0": { kg: 60, reps: 8 } },
-      setCounts: { "1|d1|supino-reto": 4 },
-      runs: { 1: { dist: 3, time: 20, cycles: 6 } },
-    };
+      entries: { "p1|1|s-bench|0": { kg: 60, reps: 8 } },
+      setCounts: { "p1|1|s-bench": 4 },
+    });
     assert.deepEqual(normalizeState(raw), raw);
   });
 
-  it("fills in fields added after the first release", () => {
-    const normalized = normalizeState({ version: 1, lastExport: null, entries: {} });
-    assert.deepEqual(normalized.setCounts, {});
-    assert.deepEqual(normalized.runs, {});
+  it("keeps only the fields the exercise actually logs", () => {
+    const normalized = normalizeState(
+      stateWith(plan, {
+        entries: {
+          "p1|1|s-bench|0": { kg: 60, reps: 8, dist: 5 },
+          "p1|1|s-run|0": { dist: 3.2, time: 22, kg: 80 },
+        },
+      }),
+    );
+
+    assert.deepEqual(normalized.entries["p1|1|s-bench|0"], { kg: 60, reps: 8 });
+    assert.deepEqual(normalized.entries["p1|1|s-run|0"], { dist: 3.2, time: 22 });
+  });
+
+  it("drops records that belong to no plan, slot, or week", () => {
+    const normalized = normalizeState(
+      stateWith(testPlan(2), {
+        entries: {
+          "p1|1|s-bench|0": { kg: 60, reps: 8 },
+          "p2|1|s-bench|0": { kg: 60, reps: 8 },
+          "p1|9|s-bench|0": { kg: 60, reps: 8 },
+          "p1|1|s-gone|0": { kg: 60, reps: 8 },
+          "p1|1|s-bench|99": { kg: 60, reps: 8 },
+          nonsense: { kg: 60 },
+        },
+      }),
+    );
+
+    assert.deepEqual(Object.keys(normalized.entries), ["p1|1|s-bench|0"]);
+  });
+
+  it("keeps records behind a reduced set count — they are hidden, not gone", () => {
+    const normalized = normalizeState(
+      stateWith(plan, {
+        entries: { "p1|1|s-bench|5": { kg: 60, reps: 8 } },
+        setCounts: { "p1|1|s-bench": 2 },
+      }),
+    );
+
+    assert.ok(normalized.entries["p1|1|s-bench|5"]);
+  });
+
+  it("drops an entry with nothing filled in", () => {
+    const normalized = normalizeState(
+      stateWith(plan, { entries: { "p1|1|s-bench|0": { kg: null, reps: null } } }),
+    );
+    assert.deepEqual(normalized.entries, {});
+  });
+
+  it("drops a set-count override that matches the plan anyway", () => {
+    const normalized = normalizeState(
+      stateWith(plan, { setCounts: { "p1|1|s-bench": 3, "p1|1|s-abs": 5 } }),
+    );
+    assert.deepEqual(normalized.setCounts, { "p1|1|s-abs": 5 });
+  });
+
+  it("repairs a malformed plan rather than dropping the whole state", () => {
+    const normalized = normalizeState({
+      entries: {},
+      plans: [{ id: "p1", weeks: 999, days: [{ id: "d", slots: [{ exerciseId: "nope" }] }] }],
+    });
+
+    assert.equal(normalized.plans[0].weeks, 24);
+    assert.deepEqual(normalized.plans[0].days[0].slots, []);
+  });
+
+  it("replaces two plans sharing an id, which would share one history", () => {
+    const normalized = normalizeState({ entries: {}, plans: [testPlan(), testPlan()] });
+    assert.equal(normalized.plans.length, 1);
   });
 
   it("degrades to an empty state instead of throwing", () => {
@@ -146,29 +190,38 @@ describe("normalizeState", () => {
 });
 
 describe("parseBackup", () => {
-  it("accepts a backup exported by the pre-refactor build", () => {
-    const state = parseBackup(LEGACY_BACKUP);
+  it("round-trips a backup carrying a custom plan and its records", () => {
+    const original = stateWith(testPlan(), {
+      lastExport: 999,
+      entries: { "p1|2|s-run|0": { dist: 3.2, time: 22 } },
+    });
 
-    assert.equal(Object.keys(state.entries).length, 17);
-    assert.deepEqual(state.entries["1|d1|supino-reto|0"], { kg: 60, reps: 8 });
-    assert.deepEqual(state.entries["1|d2|abdominal-d2|0"], { kg: null, reps: 20 });
-    assert.deepEqual(state.setCounts, { "2|d1|supino-reto": 4, "2|d2|panturrilha-pe": 3 });
-    assert.deepEqual(state.runs["1"], { dist: 3.2, time: 22, cycles: 7 });
-    assert.equal(state.runs["2"].time, null);
+    const restored = parseBackup(JSON.stringify(original));
+
+    assert.deepEqual(restored.plans, original.plans);
+    assert.deepEqual(restored.entries, original.entries);
+    assert.equal(restored.lastExport, 999);
   });
 
   it("rejects anything that is not a backup", () => {
-    for (const junk of ["null", "[]", "42", '{"entries":null}', '{"foo":1}', "not json"]) {
+    for (const junk of [
+      "null",
+      "[]",
+      "42",
+      '{"entries":null}',
+      '{"foo":1}',
+      '{"entries":{}}', // no plans: pre-v2 exports carry no plan to log against
+      "not json",
+    ]) {
       assert.throws(() => parseBackup(junk), `input: ${junk}`);
     }
   });
 });
 
 describe("normalizePrefs", () => {
-  it("defaults an unknown week and keeps a valid one", () => {
-    assert.equal(normalizePrefs({ week: 9 }).week, 1);
-    assert.equal(normalizePrefs({ week: "2" }).week, 1);
-    assert.equal(normalizePrefs({ week: 3 }).week, 3);
+  it("keeps ids as written — a stale one is resolved at render time, not here", () => {
+    assert.equal(normalizePrefs({ planId: "gone" }).planId, "gone");
+    assert.equal(normalizePrefs({ day: "gone" }).day, "gone");
   });
 
   it("has no locale until the user picks one, so it follows the device", () => {
@@ -178,246 +231,332 @@ describe("normalizePrefs", () => {
 
   it("survives missing or corrupt prefs", () => {
     assert.deepEqual(normalizePrefs(null), {
+      planId: null,
       week: 1,
-      day: "d1",
+      day: null,
       locale: null,
       backupDismissedAt: 0,
       installDismissed: false,
     });
-  });
-});
-
-describe("clampSetCount", () => {
-  it("holds the count between 1 and 8", () => {
-    assert.equal(clampSetCount(0), 1);
-    assert.equal(clampSetCount(-3), 1);
-    assert.equal(clampSetCount(4), 4);
-    assert.equal(clampSetCount(9), 8);
+    assert.equal(normalizePrefs({ week: "2" }).week, 1);
+    assert.equal(normalizePrefs({ week: 0 }).week, 1);
+    assert.equal(normalizePrefs({ week: 6 }).week, 6);
   });
 });
 
 describe("getSetCount", () => {
+  const plan = testPlan();
+  const bench = plan.days[0].slots[0];
+
   it("uses the plan's prescription when there is no override", () => {
-    assert.equal(getSetCount(emptyState(), 1, "d1", benchPress), 3);
+    assert.equal(getSetCount(stateWith(plan), "p1", 1, bench), 3);
   });
 
-  it("prefers a stored override", () => {
-    const state = { ...emptyState(), setCounts: { "2|d1|supino-reto": 5 } };
-    assert.equal(getSetCount(state, 2, "d1", benchPress), 5);
-    assert.equal(getSetCount(state, 1, "d1", benchPress), 3, "overrides are per week");
+  it("prefers a stored override, per week", () => {
+    const state = stateWith(plan, { setCounts: { "p1|2|s-bench": 5 } });
+    assert.equal(getSetCount(state, "p1", 2, bench), 5);
+    assert.equal(getSetCount(state, "p1", 1, bench), 3);
   });
 
   it("clamps a corrupt override", () => {
-    const state = { ...emptyState(), setCounts: { "1|d1|supino-reto": 99 } };
-    assert.equal(getSetCount(state, 1, "d1", benchPress), 8);
+    const state = stateWith(plan, { setCounts: { "p1|1|s-bench": 99 } });
+    assert.equal(getSetCount(state, "p1", 1, bench), 8);
   });
 });
 
 describe("findPrevious", () => {
-  const state = normalizeState({
-    entries: {
-      "1|d1|supino-reto|0": { kg: 60, reps: 8 },
-      "3|d1|supino-reto|0": { kg: 65, reps: 8 },
-    },
+  const state = normalizeState(
+    stateWith(testPlan(), {
+      entries: {
+        "p1|1|s-bench|0": { kg: 60, reps: 8 },
+        "p1|3|s-bench|0": { kg: 65, reps: 8 },
+      },
+    }),
+  );
+
+  it("walks back to the most recent earlier week", () => {
+    assert.deepEqual(findPrevious(state, "p1", 4, "s-bench", 0), { week: 3, kg: 65, reps: 8 });
   });
 
-  it("returns null in week 1, where there is nothing to beat", () => {
-    assert.equal(findPrevious(state, 1, "d1", "supino-reto", 0), null);
+  it("falls through a skipped week", () => {
+    assert.deepEqual(findPrevious(state, "p1", 3, "s-bench", 0), { week: 1, kg: 60, reps: 8 });
   });
 
-  it("skips a week that was not logged", () => {
-    assert.deepEqual(findPrevious(state, 3, "d1", "supino-reto", 0), {
-      week: 1,
-      kg: 60,
-      reps: 8,
+  it("has nothing to offer in week 1", () => {
+    assert.equal(findPrevious(state, "p1", 1, "s-bench", 0), null);
+  });
+
+  it("never leaves the plan it was asked about", () => {
+    const twoPlans = normalizeState({
+      entries: { "p1|1|s-bench|0": { kg: 60, reps: 8 } },
+      plans: [testPlan(), { ...testPlan(), id: "p2" }],
     });
-  });
 
-  it("picks the nearest earlier week", () => {
-    assert.deepEqual(findPrevious(state, 4, "d1", "supino-reto", 0), {
-      week: 3,
-      kg: 65,
-      reps: 8,
-    });
-  });
-
-  it("ignores sets that were never filled in", () => {
-    assert.equal(findPrevious(state, 4, "d1", "supino-reto", 2), null);
+    assert.ok(findPrevious(twoPlans, "p1", 2, "s-bench", 0));
+    assert.equal(
+      findPrevious(twoPlans, "p2", 2, "s-bench", 0),
+      null,
+      "a new block starts with a clean slate",
+    );
   });
 });
 
-describe("findPreviousRun", () => {
-  const state = normalizeState({
-    entries: {},
-    runs: { 1: { dist: 3.2, time: 22, cycles: 7 }, 2: { dist: null, time: null, cycles: null } },
+describe("counting records", () => {
+  const plan = testPlan();
+  const state = normalizeState(
+    stateWith(plan, {
+      entries: {
+        "p1|1|s-bench|0": { kg: 60, reps: 8 },
+        "p1|1|s-bench|1": { kg: 60, reps: 7 },
+        "p1|1|s-abs|0": { reps: 20 },
+        "p1|2|s-bench|0": { kg: 62, reps: 8 },
+      },
+    }),
+  );
+
+  it("counts a day in one week", () => {
+    assert.equal(countDayEntries(state, "p1", 1, plan.days[0]), 3);
+    assert.equal(countDayEntries(state, "p1", 2, plan.days[0]), 1);
+    assert.equal(countDayEntries(state, "p1", 1, plan.days[1]), 0);
   });
 
-  it("ignores a run with no data at all", () => {
-    assert.equal(findPreviousRun(state, 3).week, 1);
+  it("counts one slot, in a week or across all of them", () => {
+    assert.equal(countSlotEntries(state, "p1", 1, "s-bench"), 2);
+    assert.equal(countSlotEntries(state, "p1", null, "s-bench"), 3);
   });
 
-  it("returns null when no earlier run exists", () => {
-    assert.equal(findPreviousRun(state, 1), null);
+  it("counts everything a plan holds", () => {
+    assert.equal(countPlanEntries(state, "p1"), 4);
+    assert.equal(countPlanEntries(state, "p2"), 0);
+  });
+
+  it("reports what a revised plan would discard, before it is saved", () => {
+    assert.equal(countOrphans(state, plan), 0, "an unchanged plan discards nothing");
+
+    const shorter = { ...plan, weeks: 1 };
+    assert.equal(countOrphans(state, shorter), 1);
+
+    const withoutBench = {
+      ...plan,
+      days: [{ ...plan.days[0], slots: [plan.days[0].slots[1]] }, plan.days[1]],
+    };
+    assert.equal(countOrphans(state, withoutBench), 3);
+  });
+
+  it("spots a set count differing from the plan", () => {
+    assert.equal(hasCustomSetCounts(state, "p1", 1, plan.days[0]), false);
+
+    const custom = normalizeState(stateWith(plan, { setCounts: { "p1|1|s-bench": 5 } }));
+    assert.equal(hasCustomSetCounts(custom, "p1", 1, plan.days[0]), true);
+    assert.equal(hasCustomSetCounts(custom, "p1", 2, plan.days[0]), false);
   });
 });
 
-describe("runHasData", () => {
-  it("treats a run as empty only when every field is null", () => {
-    assert.equal(runHasData(null), false);
-    assert.equal(runHasData({ dist: null, time: null, cycles: null }), false);
-    assert.equal(runHasData({ dist: null, time: null, cycles: 6 }), true);
-    assert.equal(runHasData({ dist: 0, time: null, cycles: null }), true);
-  });
-});
-
-describe("store mutations", () => {
-  it("writes through to storage on every edit", () => {
-    const storage = fakeStorage();
+describe("logging", () => {
+  it("writes a field through immediately and drops a row left empty", () => {
+    const storage = fakeStorage({ [STATE_KEY]: JSON.stringify(stateWith(testPlan())) });
     const store = createStore(storage);
 
-    store.setEntryField(1, "d1", "supino-reto", 0, "kg", 60);
+    store.setEntryField("p1", 1, "s-bench", 0, "kg", 60);
+    assert.deepEqual(storage.read(STATE_KEY).entries["p1|1|s-bench|0"], { kg: 60 });
 
-    assert.deepEqual(storage.read(STATE_KEY).entries["1|d1|supino-reto|0"], {
-      kg: 60,
-      reps: null,
-    });
+    store.setEntryField("p1", 1, "s-bench", 0, "reps", 8);
+    assert.deepEqual(store.getEntry("p1", 1, "s-bench", 0), { kg: 60, reps: 8 });
+
+    store.setEntryField("p1", 1, "s-bench", 0, "kg", null);
+    store.setEntryField("p1", 1, "s-bench", 0, "reps", null);
+    assert.equal(store.getEntry("p1", 1, "s-bench", 0), null, "an empty row is not stored");
   });
 
-  it("does not keep a row the user emptied again", () => {
-    const store = storeWithState(emptyState());
+  it("stores a set-count override only while it differs from the plan", () => {
+    const store = storeWith(stateWith(testPlan()));
+    const bench = store.plans[0].days[0].slots[0];
 
-    store.setEntryField(1, "d1", "supino-reto", 0, "kg", 60);
-    store.setEntryField(1, "d1", "supino-reto", 0, "kg", null);
+    store.setSetCount("p1", 1, bench, 5);
+    assert.equal(store.state.setCounts["p1|1|s-bench"], 5);
 
-    assert.equal(store.getEntry(1, "d1", "supino-reto", 0), null);
-    assert.deepEqual(store.state.entries, {});
+    store.setSetCount("p1", 1, bench, 3);
+    assert.equal(store.state.setCounts["p1|1|s-bench"], undefined);
   });
 
-  it("does not keep a run the user emptied again", () => {
-    const store = storeWithState(emptyState());
-
-    store.setRunField(2, "dist", 3.2);
-    assert.ok(store.getRun(2));
-
-    store.setRunField(2, "dist", null);
-    assert.equal(store.getRun(2), null);
-    assert.deepEqual(store.state.runs, {});
-  });
-
-  it("stores a set-count override and drops it on return to the plan default", () => {
-    const store = storeWithState(emptyState());
-
-    store.setSetCount(2, "d1", benchPress, 4);
-    assert.equal(store.state.setCounts["2|d1|supino-reto"], 4);
-
-    store.setSetCount(2, "d1", benchPress, 3);
-    assert.deepEqual(store.state.setCounts, {}, "the default is implicit, never stored");
-  });
-
-  it("clamps an out-of-range set count", () => {
-    const store = storeWithState(emptyState());
-    store.setSetCount(1, "d1", benchPress, 99);
-    assert.equal(store.state.setCounts["1|d1|supino-reto"], 8);
-  });
-
-  it("deletes the dropped set's record when a set is removed", () => {
-    const store = storeWithState(emptyState());
-    store.setEntryField(1, "d1", "supino-reto", 2, "kg", 50);
-
-    store.deleteEntry(1, "d1", "supino-reto", 2);
-
-    assert.equal(store.getEntry(1, "d1", "supino-reto", 2), null);
-  });
-
-  it("clears a day's records and returns its set counts to the plan", () => {
-    const store = storeWithState(emptyState());
-    store.setEntryField(1, "d1", "supino-reto", 0, "kg", 60);
-    store.setEntryField(1, "d1", "triceps-polia", 0, "reps", 12);
-    store.setSetCount(1, "d1", benchPress, 5);
-    // A different week must survive untouched.
-    store.setEntryField(2, "d1", "supino-reto", 0, "kg", 62.5);
-
-    store.clearDay(1, day1);
-
-    assert.deepEqual(store.state.entries, { "2|d1|supino-reto|0": { kg: 62.5, reps: null } });
-    assert.deepEqual(store.state.setCounts, {});
-  });
-
-  it("clears records hidden behind a reduced set count", () => {
-    // Reachable via an imported backup: a record at set 6 with the count down at 3.
-    const store = storeWithState(
-      normalizeState({
-        entries: { "1|d1|supino-reto|5": { kg: 40, reps: 10 } },
-        setCounts: { "1|d1|supino-reto": 3 },
+  it("clears one day of one week and nothing else", () => {
+    const plan = testPlan();
+    const store = storeWith(
+      stateWith(plan, {
+        entries: {
+          "p1|1|s-bench|0": { kg: 60, reps: 8 },
+          "p1|1|s-abs|0": { reps: 20 },
+          "p1|2|s-bench|0": { kg: 62, reps: 8 },
+          "p1|1|s-run|0": { dist: 3, time: 20 },
+        },
+        setCounts: { "p1|1|s-bench": 5 },
       }),
     );
 
-    assert.equal(countDayEntries(store.state, 1, day1), 1);
-    store.clearDay(1, day1);
+    store.clearDay("p1", 1, store.plans[0].days[0]);
+
+    assert.deepEqual(Object.keys(store.state.entries).sort(), ["p1|1|s-run|0", "p1|2|s-bench|0"]);
+    assert.deepEqual(store.state.setCounts, {});
+  });
+});
+
+describe("plan management", () => {
+  it("adds a plan and repairs it on the way in", () => {
+    const store = createStore(fakeStorage());
+    const added = store.addPlan({ name: "Block B", weeks: 99, days: [] });
+
+    assert.equal(store.plans.length, 2);
+    assert.equal(added.weeks, 24);
+    assert.equal(added.days.length, 1, "a plan always has at least one day");
+  });
+
+  it("copies a plan's structure but not its records", () => {
+    const plan = testPlan();
+    const store = storeWith(
+      stateWith(plan, { entries: { "p1|1|s-bench|0": { kg: 60, reps: 8 } } }),
+    );
+
+    const copy = store.duplicatePlan("p1", "Test block (copy)");
+
+    assert.notEqual(copy.id, "p1");
+    assert.equal(copy.name, "Test block (copy)");
+    assert.deepEqual(
+      copy.days.flatMap((day) => day.slots.map((slot) => slot.exerciseId)),
+      ["bench-press", "abs", "walk-run"],
+    );
+    assert.equal(countPlanEntries(store.state, copy.id), 0, "the copy starts clean");
+    assert.equal(countPlanEntries(store.state, "p1"), 1, "the original keeps its history");
+  });
+
+  it("deletes a plan together with everything logged under it", () => {
+    const store = storeWith(
+      stateWith(testPlan(), {
+        entries: { "p1|1|s-bench|0": { kg: 60, reps: 8 } },
+        setCounts: { "p1|1|s-bench": 5 },
+      }),
+    );
+    const other = store.addPlan(newPlan("Block B"));
+
+    assert.equal(store.deletePlan("p1"), true);
+    assert.deepEqual(store.plans, [other]);
+    assert.deepEqual(store.state.entries, {});
+    assert.deepEqual(store.state.setCounts, {});
+  });
+
+  it("refuses to delete the last plan, which would leave nothing to log against", () => {
+    const store = storeWith(stateWith(testPlan()));
+
+    assert.equal(store.deletePlan("p1"), false);
+    assert.equal(store.plans.length, 1);
+  });
+
+  it("adds an unknown plan rather than silently doing nothing", () => {
+    const store = createStore(fakeStorage());
+    store.updatePlan(newPlan("Block B"));
+
+    assert.equal(store.plans.length, 2);
+  });
+});
+
+describe("editing a plan", () => {
+  const withRecords = () =>
+    storeWith(
+      stateWith(testPlan(), {
+        entries: {
+          "p1|1|s-bench|0": { kg: 60, reps: 8 },
+          "p1|4|s-bench|0": { kg: 70, reps: 8 },
+          "p1|1|s-abs|0": { reps: 20 },
+        },
+        setCounts: { "p1|4|s-bench": 5 },
+      }),
+    );
+
+  it("keeps every record when only names and order change", () => {
+    const store = withRecords();
+    const revised = structuredClone(store.plans[0]);
+    revised.name = "Renamed";
+    revised.days[0].slots.reverse();
+
+    store.updatePlan(revised);
+
+    assert.equal(countPlanEntries(store.state, "p1"), 3);
+    assert.equal(store.plans[0].name, "Renamed");
+  });
+
+  it("discards the records a removed slot leaves behind", () => {
+    const store = withRecords();
+    const revised = structuredClone(store.plans[0]);
+    revised.days[0].slots = revised.days[0].slots.filter((slot) => slot.id !== "s-bench");
+
+    store.updatePlan(revised);
+
+    assert.deepEqual(Object.keys(store.state.entries), ["p1|1|s-abs|0"]);
+    assert.deepEqual(store.state.setCounts, {});
+  });
+
+  it("discards the records a removed day leaves behind", () => {
+    const store = withRecords();
+    const revised = structuredClone(store.plans[0]);
+    revised.days = revised.days.slice(1);
+
+    store.updatePlan(revised);
+
     assert.deepEqual(store.state.entries, {});
   });
 
-  it("replaces the whole log on import", () => {
-    const store = storeWithState(emptyState());
-    store.setEntryField(1, "d1", "supino-reto", 0, "kg", 60);
+  it("discards the weeks a shortened block no longer has", () => {
+    const store = withRecords();
+    const revised = { ...structuredClone(store.plans[0]), weeks: 2 };
 
-    store.replaceState(parseBackup(LEGACY_BACKUP));
+    store.updatePlan(revised);
 
-    assert.equal(Object.keys(store.state.entries).length, 17);
-    assert.equal(store.getEntry(1, "d1", "supino-reto", 0).reps, 8);
+    assert.deepEqual(Object.keys(store.state.entries).sort(), ["p1|1|s-abs|0", "p1|1|s-bench|0"]);
+    assert.deepEqual(store.state.setCounts, {}, "the week-4 override goes with the week");
   });
 
-  it("stamps the export time so the reminder banner goes quiet", () => {
-    const store = storeWithState(emptyState());
-    store.markExported(1_784_557_800_000);
-    assert.equal(store.state.lastExport, 1_784_557_800_000);
+  it("leaves other plans' records alone", () => {
+    const store = withRecords();
+    const other = store.addPlan({ ...testPlan(), id: "p2" });
+    store.setEntryField("p2", 1, other.days[0].slots[0].id, 0, "kg", 40);
+
+    store.updatePlan({ ...structuredClone(store.plans[0]), weeks: 1 });
+
+    assert.equal(countPlanEntries(store.state, "p2"), 1);
   });
 
-  it("persists preferences separately from training data", () => {
+  it("makes room for a new slot without disturbing the old ones", () => {
+    const store = withRecords();
+    const revised = structuredClone(store.plans[0]);
+    revised.days[1].slots = [...revised.days[1].slots, newSlot("leg-press")];
+    revised.days = [...revised.days, newDay("Extra")];
+
+    store.updatePlan(revised);
+
+    assert.equal(countPlanEntries(store.state, "p1"), 3);
+    assert.equal(store.plans[0].days.length, 3);
+  });
+});
+
+describe("preferences", () => {
+  it("are written through separately from the log", () => {
     const storage = fakeStorage();
     const store = createStore(storage);
 
-    store.setPref("locale", "pt-BR");
     store.setPref("week", 3);
-
-    assert.equal(storage.read(PREFS_KEY).locale, "pt-BR");
     assert.equal(storage.read(PREFS_KEY).week, 3);
-    assert.equal(storage.read(STATE_KEY), null, "prefs must not touch the log");
-  });
-
-  it("starts clean when storage holds an unreadable blob", () => {
-    const store = createStore(fakeStorage({ [STATE_KEY]: "{not json", [PREFS_KEY]: "{{{" }));
-
-    assert.deepEqual(store.state, emptyState());
-    assert.equal(store.prefs.week, 1);
+    assert.equal(store.prefs.week, 3);
   });
 });
 
-describe("day inspection", () => {
-  const store = storeWithState(parseBackup(LEGACY_BACKUP));
+describe("a failing storage", () => {
+  it("keeps the session usable instead of throwing", () => {
+    const storage = fakeStorage();
+    const store = createStore(storage);
+    storage.setItem = () => {
+      throw new Error("quota exceeded");
+    };
 
-  it("counts every record in a day", () => {
-    assert.equal(countDayEntries(store.state, 1, day1), 6);
-    assert.equal(countDayEntries(store.state, 4, day1), 0);
-  });
-
-  it("detects a customised set count", () => {
-    assert.equal(hasCustomSetCounts(store.state, 2, day1), true);
-    assert.equal(hasCustomSetCounts(store.state, 1, day1), false);
-  });
-});
-
-describe("legacy data loads without an import", () => {
-  it("reads a state blob written by the pre-refactor build", () => {
-    const store = createStore(fakeStorage({ [STATE_KEY]: LEGACY_BACKUP }));
-
-    assert.equal(store.getEntry(1, "d1", "supino-reto", 0).kg, 60);
-    assert.equal(store.getSetCount(2, "d1", benchPress), 4, "override survives");
-    assert.equal(store.getSetCount(1, "d1", benchPress), 3);
-    assert.deepEqual(store.findPrevious(2, "d1", "supino-reto", 0), { week: 1, kg: 60, reps: 8 });
-    assert.equal(store.findPrevious(2, "d1", "supino-reto", 3), null, "week 1 had only 3 sets");
-    assert.equal(store.findPreviousRun(2).week, 1);
-    assert.equal(store.getEntry(1, "d2", "abdominal-d2", 0).reps, 20, "reps-only record");
-    assert.equal(abs.reps, null, "abs are prescribed without a rep range");
+    store.setEntryField("plan-default", 1, "d1-s1", 0, "kg", 60);
+    assert.deepEqual(store.getEntry("plan-default", 1, "d1-s1", 0), { kg: 60 });
   });
 });

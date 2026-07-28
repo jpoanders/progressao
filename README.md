@@ -4,7 +4,12 @@ Lightweight web app (PWA) for logging strength-training loads and reps, built fo
 use in the gym. It does one thing well: when you open an exercise, you see **what you did
 last time** on that same exercise — the target to beat — so you can add load.
 
-Built-in plan: 4 weeks, 4 strength days plus a progressive walk-run.
+**Plans are yours to build.** A plan sets how many weeks the block runs, how many days it
+has, and which exercises sit on each day with what sets and rep range — all editable in
+the app. Keep several plans side by side; each carries its own history, so starting a new
+block starts a clean slate. Exercises come from a built-in catalog (user-defined ones are
+next). A fresh install starts on a 4-week starter block: four strength days plus a
+walk-run.
 
 Interface available in **English** and **Português (Brasil)**, switchable in the app.
 
@@ -54,9 +59,12 @@ npm test        # or: node --test
 ```
 
 Node's built-in test runner — **no dependencies are installed and none are shipped**. The
-tests cover the pure logic: number parsing and formatting, the previous-record lookup, set
-counts, state normalization, backup import validation, locale resolution, and translation
-key parity between locales. They also assert that `sw.js` precaches every shipped file, so
+tests cover the pure logic: number parsing and formatting, the plan model and its repair
+of malformed data, the previous-record lookup, set counts, state normalization and the
+cascading deletes that keep records consistent with the plan, backup import validation,
+locale resolution, and translation key parity between locales (including that every
+catalog exercise has a name in every language). They also assert that `sw.js` precaches
+every shipped file, so
 adding a module without updating the service worker fails the build rather than silently
 breaking offline mode.
 
@@ -94,10 +102,11 @@ styles/app.css          all styling, including the dark-mode palette and safe-ar
 src/main.js             entry point: collects the DOM, starts the app, registers the SW
 src/app.js              orchestration: rendering and the destructive/IO actions
 src/state.js            persistence, the storage schema, and pure state helpers
-src/plan.js             the training plan as pure data (ids, set counts, rep ranges)
+src/plan.js             the Plan model: factories, repair, and the built-in starter plan
+src/catalog.js          the exercise catalog plans are built from
 src/format.js           number parsing and locale-aware display formatting
 src/dom.js              a small element builder
-src/views/              view builders (selectors, day, running, tools, banners, fields)
+src/views/              view builders (selectors, day, plans, planEditor, tools, banners, fields)
 src/i18n/               locale registry, t(), and one module per language
 sw.js                   service worker: precaches the shell, serves cache-first
 icons/                  PNG icons (180 for iOS, 192/512 and 512 maskable for the manifest)
@@ -126,26 +135,35 @@ lacking a plural form the language requires. Add the new file to `SHELL` in `sw.
 and its `name` is what iOS shows under the home-screen icon. It stays English-only.
 
 ### Persistence: `localStorage`
-The data volume is tiny (4 weeks × 4 days × ~6 exercises × ~3 sets × 2 numbers). At that
-size `localStorage` is the right call: a synchronous API, simple code, no async state to
-get wrong, and the whole state is a single JSON object — which makes export/import
-trivial. IndexedDB would be overkill.
+The data volume is tiny (a block is a few weeks × a few days × ~6 exercises × ~3 sets × 2
+numbers). At that size `localStorage` is the right call: a synchronous API, simple code, no
+async state to get wrong, and the whole state is a single JSON object — which makes
+export/import trivial. IndexedDB would be overkill.
 
 Saving is **automatic**: every field edit is written immediately. There is no save button.
+The plan editor is the one exception: it works on a copy and commits on **Done**, so a
+half-finished edit never becomes your plan.
 
-### The storage schema is frozen
-The two top-level keys are `progression:v1` (the training log) and `progression:ui`
-(preferences). They were renamed from `progressao:*` when the repository moved to English;
-installs predating the rename are migrated on first load, so no history was orphaned. That
-fallback is permanent — a phone that has not opened the app since the rename still holds
-the old keys, and nothing else can recover that data.
+### The storage schema
+Two top-level keys: `progression:v2` (the training log, including your plans) and
+`progression:ui` (preferences — which plan, week and day you were on, and your language).
+Losing the second one loses nothing.
 
-Everything *inside* the state — the day ids `d1`–`d4` and the Portuguese exercise ids such
-as `supino-reto` — is **opaque identifiers, not labels**, and stays frozen. Unlike the
-top-level keys these are written into every backup file ever exported, where no migration
-can reach them. Display names are resolved from these ids at render time through
-`src/i18n`. See the header comment in `src/state.js`. Only ever add fields — never rename
-or repurpose one.
+Records are keyed `<planId>|<week>|<slotId>|<setIndex>`.
+
+- **Plans live in the log, not in preferences**, because they are your data and belong in
+  the backup file.
+- **A *slot* is one placement of an exercise on a day**, with its own id — which is what
+  records are keyed by. That is why renaming a day, reordering exercises, or putting the
+  same exercise on a day twice never disturbs history: only *removing* a slot, dropping a
+  day, or shortening a block discards records, and the editor says how many before it does.
+- **Records never cross plans.** The target-to-beat lookup walks earlier weeks within one
+  plan and stops there, so a new block starts clean on purpose.
+
+Exercise ids (`bench-press`, `romanian-deadlift`) come from `src/catalog.js` and are
+resolved to display names at render time through `src/i18n`. Names you type yourself are
+stored as-is and have no translation. See the header comments in `src/state.js` and
+`src/plan.js`.
 
 ### ⚠️ iOS clears storage after ~7 days — so make backups
 On iPhone (WebKit), both `localStorage` and IndexedDB can be **wiped automatically after
@@ -172,8 +190,10 @@ Tip: export after important sessions, and before switching devices or clearing y
 
 ## How to use it
 
-1. Pick the **Week** (W1–W4) and the **Day** (Day 1–4, or **Run**) at the top.
-2. For each exercise, fill in **kg** and **reps** per set. It saves itself.
+1. Pick the **Week** and the **Day** at the top. Both rows come from the active plan, so a
+   6-week, 3-day plan shows six week chips and three day chips.
+2. For each exercise, fill in **kg** and **reps** per set. It saves itself. Cardio
+   exercises log **km** and **min** instead.
 3. Under each set you see the **target to beat** — your most recent record for that same
    exercise and set (ideally last week). Tap **copy** to pull the previous values in, then
    beat them.
@@ -182,12 +202,31 @@ Tip: export after important sessions, and before switching devices or clearing y
    week** (W1 can have 4 sets while W2 stays at 3). Removing a set that holds data asks for
    confirmation. The `3×6-8` beside the name remains the **prescribed** rep range for
    reference — the actual count is shown by the set stepper.
-5. **Run** shows the week's protocol plus fields to log distance, time and cycles, with the
-   same target-to-beat hint as the strength days.
-6. **Clear this day** erases the current day/week's records and returns the set counts to
+5. **Clear this day** erases the current day/week's records and returns the set counts to
    the plan default (with confirmation).
-7. **Settings**, at the bottom, switches the interface language.
+6. **Settings**, at the bottom, switches the interface language.
 
-## Out of scope (v1)
+## Building a plan
+
+**Plans → Manage plans** (at the bottom of the training screen) lists every plan you have,
+which one is in use, and how much is logged against each. From there you can start a new
+one, duplicate an existing one as a starting point (structure only — the copy starts with
+no records), edit, or delete.
+
+The editor covers the whole shape of a block:
+
+- **Weeks** — how long the block runs (1 to 24).
+- **Days** — add, remove, rename and reorder them (up to 10). A day left unnamed is shown
+  as "Day 3".
+- **Exercises** — pick from the catalog, grouped by muscle, then set the prescribed sets
+  and rep range for each. Clear either rep box for exercises logged without a rep target.
+  Reorder or remove them freely.
+
+Nothing is saved until you tap **Done**. Renaming and reordering never touch your records;
+if an edit *would* discard some — a removed exercise, a dropped day, a shorter block — you
+are told how many first.
+
+## Out of scope
 No charts, volume statistics, progression/deload maths, user accounts, cloud sync or
-timers. Deliberately lean.
+timers. Deliberately lean. User-defined exercises (beyond the built-in catalog) are the
+next thing on the list.

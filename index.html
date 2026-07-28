@@ -27,7 +27,8 @@
         <h1 id="app-title">Progression</h1>
         <span class="sub" id="ctx-label"></span>
       </div>
-      <div class="selectors">
+      <!-- Hidden on the plan screens, which are not scoped to a week (see src/app.js). -->
+      <div class="selectors" id="selectors">
         <div>
           <div class="seg-label" id="week-label"></div>
           <div class="seg" id="week-seg" role="group"></div>

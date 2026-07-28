@@ -11,7 +11,8 @@ import {
   setLocale,
   t,
 } from "../src/i18n/index.js";
-import { PLAN } from "../src/plan.js";
+import { CATALOG, GROUPS } from "../src/catalog.js";
+import { DEFAULT_PLAN, planSlots } from "../src/plan.js";
 
 const PLURAL_CATEGORIES = new Set(["zero", "one", "two", "few", "many", "other"]);
 
@@ -72,19 +73,35 @@ describe("locale key parity", () => {
     });
   }
 
-  it("covers every plan id, so no exercise can render as a raw key", () => {
+  it("names every catalog exercise and group, so none can render as a raw key", () => {
     for (const tag of Object.keys(LOCALES)) {
-      const { strings } = LOCALES[tag];
-      for (const day of PLAN) {
-        assert.equal(typeof strings.plan.days[day.id], "string", `${tag} day ${day.id}`);
-        for (const exercise of day.exercises) {
-          assert.equal(
-            typeof strings.plan.exercises[exercise.id],
-            "string",
-            `${tag} exercise ${exercise.id}`,
-          );
-        }
+      const { catalog } = LOCALES[tag].strings;
+
+      for (const exercise of CATALOG) {
+        assert.equal(typeof catalog.exercises[exercise.id], "string", `${tag}: ${exercise.id}`);
       }
+      for (const group of GROUPS) {
+        assert.equal(typeof catalog.groups[group], "string", `${tag}: group ${group}`);
+      }
+    }
+  });
+
+  it("resolves every nameKey the built-in plan carries", () => {
+    const keys = [DEFAULT_PLAN.nameKey, ...DEFAULT_PLAN.days.map((day) => day.nameKey)];
+
+    for (const tag of Object.keys(LOCALES)) {
+      setLocale(tag);
+      for (const key of keys) {
+        assert.notEqual(t(key), key, `${tag} has no string for ${key}`);
+      }
+    }
+    setLocale(DEFAULT_LOCALE);
+  });
+
+  it("leaves the built-in plan's slots to the catalog rather than naming them twice", () => {
+    for (const slot of planSlots(DEFAULT_PLAN)) {
+      assert.equal(slot.name, null);
+      assert.equal(slot.nameKey, null);
     }
   });
 });
@@ -170,13 +187,16 @@ describe("t", () => {
     assert.equal(t("exercise.setCount", { n: 1e6 }), "1000000 séries");
   });
 
-  it("resolves plan text from the frozen ids", () => {
+  it("resolves exercise names from the catalog ids", () => {
     setLocale("en");
-    assert.equal(t("plan.exercises.supino-reto"), "Flat bench press (barbell or dumbbells)");
-    assert.equal(t("plan.days.d2"), "Day 2 — Legs (quads)");
+    assert.equal(
+      t("catalog.exercises.bench-press"),
+      "Flat bench press (barbell or dumbbells)",
+    );
+    assert.equal(t("plan.defaultDays.d2"), "Day 2 — Legs (quads)");
 
     setLocale("pt-BR");
-    assert.equal(t("plan.exercises.supino-reto"), "Supino reto (barra ou halteres)");
+    assert.equal(t("catalog.exercises.bench-press"), "Supino reto (barra ou halteres)");
   });
 
   it("falls back to English when a key is missing from the active locale", () => {

@@ -9,6 +9,7 @@ const elements = {
   appTitle: byId("app-title"),
   appFooter: byId("app-footer"),
   context: byId("ctx-label"),
+  selectors: byId("selectors"),
   weekLabel: byId("week-label"),
   dayLabel: byId("day-label"),
   weekSeg: byId("week-seg"),

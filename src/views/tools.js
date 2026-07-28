@@ -1,6 +1,30 @@
 import { el, fragment } from "../dom.js";
 import { formatDateTime } from "../format.js";
+import { displayName } from "../plan.js";
 import { activeLocale, availableLocales, t } from "../i18n/index.js";
+
+/** The way into plan management: which plan is in use, and a button to change that. */
+function planSection({ plan, onManagePlans }) {
+  return el(
+    "div",
+    { class: "tools" },
+    el("div", { class: "tools-title", text: t("plans.title") }),
+    el("div", {
+      class: "tools-note",
+      text: displayName(plan) || t("plans.untitled"),
+    }),
+    el(
+      "div",
+      { class: "tools-row" },
+      el("button", {
+        type: "button",
+        class: "btn",
+        text: t("plans.manage"),
+        on: { click: onManagePlans },
+      }),
+    ),
+  );
+}
 
 function backupSection({ store, onExport, onImport }) {
   const lastExport = store.state.lastExport;
@@ -56,9 +80,10 @@ function settingsSection({ onLocaleChange }) {
   );
 }
 
-/** Backup and settings, shown at the bottom of every view. */
-export function renderTools({ store, onExport, onImport, onLocaleChange }) {
+/** Plan, backup and settings, shown at the bottom of the training view. */
+export function renderTools({ store, plan, onManagePlans, onExport, onImport, onLocaleChange }) {
   return fragment(
+    planSection({ plan, onManagePlans }),
     backupSection({ store, onExport, onImport }),
     settingsSection({ onLocaleChange }),
   );

@@ -1,9 +1,12 @@
 import { el, replaceChildren } from "../dom.js";
-import { PLAN, RUN_DAY_ID, WEEKS, dayNumber } from "../plan.js";
+import { dayNumber, weeksOf } from "../plan.js";
 import { t } from "../i18n/index.js";
 
-/** Week and day chip rows in the sticky header. */
-export function renderSelectors({ elements, prefs, onSelectWeek, onSelectDay }) {
+/**
+ * Week and day chip rows in the sticky header, built from the active plan — a 6-week,
+ * 3-day plan gets six week chips and three day chips with no further wiring.
+ */
+export function renderSelectors({ elements, plan, week, dayId, onSelectWeek, onSelectDay }) {
   const { weekLabel, dayLabel, weekSeg, daySeg } = elements;
 
   weekLabel.textContent = t("header.week");
@@ -22,20 +25,19 @@ export function renderSelectors({ elements, prefs, onSelectWeek, onSelectDay }) 
 
   replaceChildren(
     weekSeg,
-    WEEKS.map((week) =>
-      chip(t("header.weekChip", { n: week }), prefs.week === week, () => onSelectWeek(week)),
+    weeksOf(plan).map((candidate) =>
+      chip(t("header.weekChip", { n: candidate }), week === candidate, () =>
+        onSelectWeek(candidate),
+      ),
     ),
   );
 
   replaceChildren(
     daySeg,
-    PLAN.map((day) =>
-      chip(
-        t("header.dayChip", { n: dayNumber(day.id) }),
-        prefs.day === day.id,
-        () => onSelectDay(day.id),
+    plan.days.map((day) =>
+      chip(t("header.dayChip", { n: dayNumber(plan, day.id) }), dayId === day.id, () =>
+        onSelectDay(day.id),
       ),
     ),
-    chip(t("header.runChip"), prefs.day === RUN_DAY_ID, () => onSelectDay(RUN_DAY_ID)),
   );
 }

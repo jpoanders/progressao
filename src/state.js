@@ -1,89 +1,164 @@
 /**
  * Persistence and state mutation.
  *
- * ── Storage schema (FROZEN — do not rename anything in this block) ───────────────────
+ * ── Storage schema ───────────────────────────────────────────────────────────────────
  *
- * localStorage["progression:v1"]  the training log
+ * localStorage["progression:v2"]  the training log
  *   {
- *     version: 1,
+ *     version: 2,
  *     lastExport: number | null,          // epoch ms of the last JSON export
- *     entries:   { "<week>|<dayId>|<exerciseId>|<setIndex>": { kg, reps } },
- *     setCounts: { "<week>|<dayId>|<exerciseId>": number },   // only when != plan default
- *     runs:      { "<week>": { dist, time, cycles } }
+ *     plans:     [Plan],                  // the user's plans — see src/plan.js
+ *     entries:   { "<planId>|<week>|<slotId>|<setIndex>": { kg, reps } | { dist, time } },
+ *     setCounts: { "<planId>|<week>|<slotId>": number }   // only when != the plan's
  *   }
  *
  * localStorage["progression:ui"]  UI preferences (disposable; losing it loses nothing)
- *   { week, day, locale, backupDismissedAt, installDismissed }
+ *   { planId, week, day, locale, backupDismissedAt, installDismissed }
  *
- * The two top-level keys were renamed from `progressao:*` when the repository moved to
- * English. Installs that predate the rename are migrated on first load — see
- * readWithMigration below — so no training history is orphaned. Keep that fallback
- * indefinitely: a device that has not opened the app since the rename still holds the
- * old keys, and there is no other path back to that data.
+ * Plans live in the log rather than in preferences for one reason: they are user data, so
+ * they belong in the backup file. Preferences only remember *where you were*.
  *
- * Every id *inside* the state (`d1`..`d4`, `supino-reto`, the `dist`/`time`/`cycles`
- * field names) stays Portuguese-derived and is still frozen. Unlike the top-level keys
- * these are also written into every backup file ever exported, where no migration can
- * reach them; they are opaque identifiers, not prose. The user-facing English/Portuguese
- * text is resolved from them at render time via src/i18n. Only ever add fields here —
- * never rename or repurpose one.
- * ─────────────────────────────────────────────────────────────────────────────────────
+ * ── Records are plan-scoped ──────────────────────────────────────────────────────────
+ * Every key starts with a plan id, and the previous-record lookup never leaves the plan
+ * it was asked about. Starting a new block starts a clean slate on purpose.
+ *
+ * The whole state is kept self-consistent: an entry whose plan, slot, or week no longer
+ * exists is pruned rather than kept as invisible ballast. That is what makes editing a
+ * plan safe to reason about — what you see in the app is exactly what is stored.
  */
 
-import { MAX_SETS, MIN_SETS, PLAN, WEEKS } from "./plan.js";
+import { ENTRY_FIELDS, entryFields } from "./catalog.js";
+import { MAX_SETS, clampSets, defaultPlan, findPlan, normalizePlan, weeksOf } from "./plan.js";
 
-export const STATE_KEY = "progression:v1";
+export const STATE_KEY = "progression:v2";
 export const PREFS_KEY = "progression:ui";
 
-/** Pre-rename keys, read once per install and then migrated away. */
-export const LEGACY_STATE_KEY = "progressao:v1";
-export const LEGACY_PREFS_KEY = "progressao:ui";
+export const STATE_VERSION = 2;
 
-export const STATE_VERSION = 1;
-
-/** Fields of a running session, in display order. */
-export const RUN_FIELDS = ["dist", "time", "cycles"];
-
-export function entryKey(week, dayId, exerciseId, setIndex) {
-  return `${week}|${dayId}|${exerciseId}|${setIndex}`;
+export function entryKey(planId, week, slotId, setIndex) {
+  return `${planId}|${week}|${slotId}|${setIndex}`;
 }
 
-export function setCountKey(week, dayId, exerciseId) {
-  return `${week}|${dayId}|${exerciseId}`;
+export function setCountKey(planId, week, slotId) {
+  return `${planId}|${week}|${slotId}`;
 }
 
+/** A fresh install still needs something to log against, so it starts on the built-in plan. */
 export function emptyState() {
-  return { version: STATE_VERSION, lastExport: null, entries: {}, setCounts: {}, runs: {} };
+  return {
+    version: STATE_VERSION,
+    lastExport: null,
+    plans: [defaultPlan()],
+    entries: {},
+    setCounts: {},
+  };
 }
 
 function isPlainObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+const asNumber = (value) => (Number.isFinite(value) ? value : null);
+
+/** Indexes a plan's slots and week range so record keys can be validated in one pass. */
+function planIndex(plans) {
+  return new Map(
+    plans.map((plan) => [
+      plan.id,
+      {
+        weeks: new Set(weeksOf(plan).map(String)),
+        slots: new Map(plan.days.flatMap((day) => day.slots.map((slot) => [slot.id, slot]))),
+      },
+    ]),
+  );
+}
+
+/** Splits a record key and resolves it against the plans, or null when it fits nowhere. */
+function resolveKey(index, key, arity) {
+  const parts = String(key).split("|");
+  if (parts.length !== arity) return null;
+
+  const [planId, week, slotId, setIndex] = parts;
+  const plan = index.get(planId);
+  if (!plan || !plan.weeks.has(week)) return null;
+
+  // Set indexes beyond MAX_SETS are unreachable in the UI, so they can only be junk.
+  // Ones merely beyond the *current* count are kept: reducing the sets shown must not
+  // silently destroy what is behind them.
+  if (arity === 4 && !/^\d+$/.test(setIndex)) return null;
+  if (arity === 4 && Number(setIndex) >= MAX_SETS) return null;
+
+  const slot = plan.slots.get(slotId);
+  return slot ? { slot } : null;
+}
+
+/** Keeps only the fields this exercise actually logs, and only if something is filled in. */
+function normalizeEntry(raw, slot) {
+  if (!isPlainObject(raw)) return null;
+
+  const entry = {};
+  let filled = false;
+  for (const field of entryFields(slot.exerciseId)) {
+    entry[field] = asNumber(raw[field]);
+    if (entry[field] != null) filled = true;
+  }
+  return filled ? entry : null;
+}
+
+function normalizePlans(raw) {
+  const plans = (Array.isArray(raw) ? raw : []).map(normalizePlan);
+
+  // Two plans sharing an id would share every record keyed under it.
+  const seen = new Set();
+  const unique = plans.filter((plan) => (seen.has(plan.id) ? false : seen.add(plan.id)));
+
+  return unique.length > 0 ? unique : [defaultPlan()];
+}
+
 /**
- * Coerces anything parsed from storage or a backup file into a valid state object.
- * Anything unrecognisable degrades to an empty state rather than throwing, so a corrupt
- * blob can never brick the app.
+ * Repairs anything read from storage or an imported backup. Never throws: a state too
+ * broken to repair comes back empty rather than crashing the app on load.
  */
 export function normalizeState(raw) {
   if (!isPlainObject(raw) || !isPlainObject(raw.entries)) return emptyState();
+
+  const plans = normalizePlans(raw.plans);
+  const index = planIndex(plans);
+
+  const entries = {};
+  for (const [key, value] of Object.entries(raw.entries)) {
+    const resolved = resolveKey(index, key, 4);
+    if (!resolved) continue;
+    const entry = normalizeEntry(value, resolved.slot);
+    if (entry) entries[key] = entry;
+  }
+
+  const setCounts = {};
+  const rawCounts = isPlainObject(raw.setCounts) ? raw.setCounts : {};
+  for (const [key, value] of Object.entries(rawCounts)) {
+    const resolved = resolveKey(index, key, 3);
+    if (!resolved || !Number.isFinite(value)) continue;
+    // An override equal to the plan's own prescription carries no information.
+    const count = clampSets(value);
+    if (count !== resolved.slot.sets) setCounts[key] = count;
+  }
+
   return {
     version: STATE_VERSION,
-    lastExport: typeof raw.lastExport === "number" ? raw.lastExport : null,
-    entries: raw.entries,
-    setCounts: isPlainObject(raw.setCounts) ? raw.setCounts : {},
-    runs: isPlainObject(raw.runs) ? raw.runs : {},
+    lastExport: asNumber(raw.lastExport),
+    plans,
+    entries,
+    setCounts,
   };
 }
 
 /**
  * Parses the contents of a backup file. Throws on anything that is not a recognisable
  * export, so the caller can tell "bad file" apart from "empty backup".
- * Accepts files written by any version of the app — the shape has never changed.
  */
 export function parseBackup(text) {
   const raw = JSON.parse(text);
-  if (!isPlainObject(raw) || !isPlainObject(raw.entries)) {
+  if (!isPlainObject(raw) || !isPlainObject(raw.entries) || !Array.isArray(raw.plans)) {
     throw new Error("Not a Progression backup file");
   }
   return normalizeState(raw);
@@ -92,77 +167,85 @@ export function parseBackup(text) {
 export function normalizePrefs(raw) {
   const prefs = isPlainObject(raw) ? raw : {};
   return {
-    week: WEEKS.includes(prefs.week) ? prefs.week : WEEKS[0],
-    day: typeof prefs.day === "string" ? prefs.day : PLAN[0].id,
+    // Which plan and day these point at is checked at render time, not here — prefs are
+    // normalized without knowing the plans, and a stale id simply falls back to the first.
+    planId: typeof prefs.planId === "string" ? prefs.planId : null,
+    week: Number.isInteger(prefs.week) && prefs.week >= 1 ? prefs.week : 1,
+    day: typeof prefs.day === "string" ? prefs.day : null,
     locale: typeof prefs.locale === "string" ? prefs.locale : null,
     backupDismissedAt: typeof prefs.backupDismissedAt === "number" ? prefs.backupDismissedAt : 0,
     installDismissed: prefs.installDismissed === true,
   };
 }
 
-export function clampSetCount(count) {
-  return Math.min(MAX_SETS, Math.max(MIN_SETS, count));
+export function getEntry(state, planId, week, slotId, setIndex) {
+  return state.entries[entryKey(planId, week, slotId, setIndex)] ?? null;
 }
 
-export function getEntry(state, week, dayId, exerciseId, setIndex) {
-  return state.entries[entryKey(week, dayId, exerciseId, setIndex)] ?? null;
+/** Current set count for a slot: the user's override, else the plan's prescription. */
+export function getSetCount(state, planId, week, slot) {
+  const stored = state.setCounts[setCountKey(planId, week, slot.id)];
+  return clampSets(Number.isFinite(stored) ? stored : slot.sets);
 }
 
-/** Current set count for an exercise: the user's override, else the plan's prescription. */
-export function getSetCount(state, week, dayId, exercise) {
-  const stored = state.setCounts[setCountKey(week, dayId, exercise.id)];
-  return clampSetCount(Number.isFinite(stored) ? stored : exercise.sets);
+export function entryHasData(entry) {
+  return Boolean(entry) && ENTRY_FIELDS.some((field) => entry[field] != null);
 }
 
 /**
- * The "target to beat": the most recent filled record of the same exercise and set in an
- * earlier week. Walks backwards so a skipped week falls through to the one before it.
+ * The "target to beat": the most recent filled record of the same slot and set in an
+ * earlier week of the same plan. Walks backwards so a skipped week falls through to the
+ * one before it. It never looks into another plan — a new block starts clean.
  */
-export function findPrevious(state, week, dayId, exerciseId, setIndex) {
+export function findPrevious(state, planId, week, slotId, setIndex) {
   for (let candidate = week - 1; candidate >= 1; candidate--) {
-    const entry = getEntry(state, candidate, dayId, exerciseId, setIndex);
-    if (entry && (entry.kg != null || entry.reps != null)) return { week: candidate, ...entry };
-  }
-  return null;
-}
-
-export function runHasData(run) {
-  return Boolean(run) && RUN_FIELDS.some((field) => run[field] != null);
-}
-
-export function getRun(state, week) {
-  return state.runs[week] ?? null;
-}
-
-/** Same idea as findPrevious, for the once-per-week running session. */
-export function findPreviousRun(state, week) {
-  for (let candidate = week - 1; candidate >= 1; candidate--) {
-    const run = getRun(state, candidate);
-    if (runHasData(run)) return { week: candidate, ...run };
+    const entry = getEntry(state, planId, candidate, slotId, setIndex);
+    if (entryHasData(entry)) return { week: candidate, ...entry };
   }
   return null;
 }
 
 /**
  * How many records a day holds. Scans up to MAX_SETS rather than the current set count so
- * records hidden behind a reduced set count (possible via an imported backup) are still
- * counted — and therefore still cleared by clearDay.
+ * records hidden behind a reduced set count are still counted — and therefore still
+ * cleared by clearDay.
  */
-export function countDayEntries(state, week, day) {
-  let total = 0;
-  for (const exercise of day.exercises) {
-    for (let setIndex = 0; setIndex < MAX_SETS; setIndex++) {
-      if (getEntry(state, week, day.id, exercise.id, setIndex)) total++;
-    }
-  }
-  return total;
+export function countDayEntries(state, planId, week, day) {
+  return day.slots.reduce(
+    (total, slot) => total + countSlotEntries(state, planId, week, slot.id),
+    0,
+  );
 }
 
-/** True when any exercise in the day has a set count differing from the plan. */
-export function hasCustomSetCounts(state, week, day) {
-  return day.exercises.some(
-    (exercise) => state.setCounts[setCountKey(week, day.id, exercise.id)] != null,
-  );
+/** Records logged for one slot, in one week or — with week null — across every week. */
+export function countSlotEntries(state, planId, week, slotId) {
+  const prefix = week == null ? `${planId}|` : `${planId}|${week}|`;
+  const suffix = `|${slotId}|`;
+
+  return Object.keys(state.entries).filter(
+    (key) => key.startsWith(prefix) && key.includes(suffix),
+  ).length;
+}
+
+/** Every record belonging to a plan — what deleting it would throw away. */
+export function countPlanEntries(state, planId) {
+  return Object.keys(state.entries).filter((key) => key.startsWith(`${planId}|`)).length;
+}
+
+/**
+ * How many records a revised plan would discard: those whose slot or week it no longer
+ * has. The plan editor asks this before saving so a destructive edit is never silent.
+ */
+export function countOrphans(state, plan) {
+  const index = planIndex([plan]);
+  return Object.keys(state.entries).filter(
+    (key) => key.startsWith(`${plan.id}|`) && !resolveKey(index, key, 4),
+  ).length;
+}
+
+/** True when any slot in the day has a set count differing from the plan. */
+export function hasCustomSetCounts(state, planId, week, day) {
+  return day.slots.some((slot) => state.setCounts[setCountKey(planId, week, slot.id)] != null);
 }
 
 function readJSON(storage, key) {
@@ -175,39 +258,14 @@ function readJSON(storage, key) {
 }
 
 /**
- * Reads `key`, falling back to the pre-rename `legacyKey` and moving the value across.
- *
- * The copy is written before the old key is dropped, so a storage failure mid-migration
- * leaves the original untouched and the next load simply tries again. A corrupt legacy
- * blob reads as null and is left alone rather than destroyed.
- */
-function readWithMigration(storage, key, legacyKey) {
-  const current = readJSON(storage, key);
-  if (current != null) return current;
-
-  const legacy = readJSON(storage, legacyKey);
-  if (legacy == null) return null;
-
-  try {
-    storage.setItem(key, JSON.stringify(legacy));
-    storage.removeItem(legacyKey);
-  } catch (error) {
-    // Migration failed (quota, storage disabled). The data is still readable under the
-    // old key, so this session works and the next load retries.
-    console.warn("Could not migrate storage to the renamed key", error);
-  }
-  return legacy;
-}
-
-/**
  * Creates the app store over a Storage-like object (getItem/setItem/removeItem).
  * Tests inject a fake; the browser passes localStorage.
  *
  * Every mutator writes through immediately — the app has no explicit save action.
  */
 export function createStore(storage = globalThis.localStorage) {
-  let state = normalizeState(readWithMigration(storage, STATE_KEY, LEGACY_STATE_KEY));
-  let prefs = normalizePrefs(readWithMigration(storage, PREFS_KEY, LEGACY_PREFS_KEY));
+  let state = normalizeState(readJSON(storage, STATE_KEY));
+  let prefs = normalizePrefs(readJSON(storage, PREFS_KEY));
 
   function persist(key, value) {
     try {
@@ -222,6 +280,26 @@ export function createStore(storage = globalThis.localStorage) {
   const saveState = () => persist(STATE_KEY, state);
   const savePrefs = () => persist(PREFS_KEY, prefs);
 
+  function addPlan(plan) {
+    const normalized = normalizePlan(plan);
+    state.plans = [...state.plans, normalized];
+    saveState();
+    return normalized;
+  }
+
+  /** Drops every record a plan revision no longer has room for. */
+  function pruneRecords(plan) {
+    const index = planIndex([plan]);
+    const owned = (key) => key.startsWith(`${plan.id}|`);
+
+    for (const key of Object.keys(state.entries)) {
+      if (owned(key) && !resolveKey(index, key, 4)) delete state.entries[key];
+    }
+    for (const key of Object.keys(state.setCounts)) {
+      if (owned(key) && !resolveKey(index, key, 3)) delete state.setCounts[key];
+    }
+  }
+
   return {
     get state() {
       return state;
@@ -229,62 +307,101 @@ export function createStore(storage = globalThis.localStorage) {
     get prefs() {
       return prefs;
     },
+    get plans() {
+      return state.plans;
+    },
 
-    getEntry: (week, dayId, exerciseId, setIndex) =>
-      getEntry(state, week, dayId, exerciseId, setIndex),
-    getRun: (week) => getRun(state, week),
-    getSetCount: (week, dayId, exercise) => getSetCount(state, week, dayId, exercise),
-    findPrevious: (week, dayId, exerciseId, setIndex) =>
-      findPrevious(state, week, dayId, exerciseId, setIndex),
-    findPreviousRun: (week) => findPreviousRun(state, week),
+    findPlan: (planId) => findPlan(state.plans, planId),
+
+    getEntry: (planId, week, slotId, setIndex) =>
+      getEntry(state, planId, week, slotId, setIndex),
+    getSetCount: (planId, week, slot) => getSetCount(state, planId, week, slot),
+    findPrevious: (planId, week, slotId, setIndex) =>
+      findPrevious(state, planId, week, slotId, setIndex),
 
     /** Writes one field of one set. Rows left entirely empty are removed, not stored. */
-    setEntryField(week, dayId, exerciseId, setIndex, field, value) {
-      const key = entryKey(week, dayId, exerciseId, setIndex);
-      const entry = state.entries[key] ?? { kg: null, reps: null };
+    setEntryField(planId, week, slotId, setIndex, field, value) {
+      const key = entryKey(planId, week, slotId, setIndex);
+      const entry = { ...state.entries[key] };
       entry[field] = value;
-      if (entry.kg == null && entry.reps == null) delete state.entries[key];
-      else state.entries[key] = entry;
+
+      if (entryHasData(entry)) state.entries[key] = entry;
+      else delete state.entries[key];
       saveState();
     },
 
-    deleteEntry(week, dayId, exerciseId, setIndex) {
-      delete state.entries[entryKey(week, dayId, exerciseId, setIndex)];
-      saveState();
-    },
-
-    /** Writes one field of a week's run. An entirely empty run is removed, not stored. */
-    setRunField(week, field, value) {
-      const run = state.runs[week] ?? { dist: null, time: null, cycles: null };
-      run[field] = value;
-      if (runHasData(run)) state.runs[week] = run;
-      else delete state.runs[week];
-      saveState();
-    },
-
-    deleteRun(week) {
-      delete state.runs[week];
+    deleteEntry(planId, week, slotId, setIndex) {
+      delete state.entries[entryKey(planId, week, slotId, setIndex)];
       saveState();
     },
 
     /** Stores a set-count override, or drops it when it matches the plan again. */
-    setSetCount(week, dayId, exercise, count) {
-      const key = setCountKey(week, dayId, exercise.id);
-      const next = clampSetCount(count);
-      if (next === exercise.sets) delete state.setCounts[key];
+    setSetCount(planId, week, slot, count) {
+      const key = setCountKey(planId, week, slot.id);
+      const next = clampSets(count);
+      if (next === slot.sets) delete state.setCounts[key];
       else state.setCounts[key] = next;
       saveState();
     },
 
     /** Wipes a day's records and returns its set counts to the plan defaults. */
-    clearDay(week, day) {
-      for (const exercise of day.exercises) {
-        for (let setIndex = 0; setIndex < MAX_SETS; setIndex++) {
-          delete state.entries[entryKey(week, day.id, exercise.id, setIndex)];
+    clearDay(planId, week, day) {
+      for (const slot of day.slots) {
+        for (const key of Object.keys(state.entries)) {
+          if (key.startsWith(`${planId}|${week}|${slot.id}|`)) delete state.entries[key];
         }
-        delete state.setCounts[setCountKey(week, day.id, exercise.id)];
+        delete state.setCounts[setCountKey(planId, week, slot.id)];
       }
       saveState();
+    },
+
+    addPlan,
+
+    /** Replaces a plan in place, discarding records the revision has no room for. */
+    updatePlan(plan) {
+      const normalized = normalizePlan(plan);
+      const index = state.plans.findIndex((candidate) => candidate.id === normalized.id);
+      if (index === -1) return addPlan(plan);
+
+      state.plans[index] = normalized;
+      pruneRecords(normalized);
+      saveState();
+      return normalized;
+    },
+
+    /** Copies a plan's structure under fresh ids. Records are not copied — only the plan. */
+    duplicatePlan(planId, name) {
+      const source = findPlan(state.plans, planId);
+      if (!source) return null;
+
+      // Dropping the ids makes normalizePlan mint new ones, so the copy starts with a
+      // clean history instead of sharing the original's records.
+      return addPlan({
+        ...source,
+        id: null,
+        name,
+        nameKey: null,
+        days: source.days.map((day) => ({
+          ...day,
+          id: null,
+          slots: day.slots.map((slot) => ({ ...slot, id: null })),
+        })),
+      });
+    },
+
+    /** Deletes a plan and every record logged under it. The last plan cannot be deleted. */
+    deletePlan(planId) {
+      if (state.plans.length <= 1) return false;
+
+      state.plans = state.plans.filter((plan) => plan.id !== planId);
+      for (const key of Object.keys(state.entries)) {
+        if (key.startsWith(`${planId}|`)) delete state.entries[key];
+      }
+      for (const key of Object.keys(state.setCounts)) {
+        if (key.startsWith(`${planId}|`)) delete state.setCounts[key];
+      }
+      saveState();
+      return true;
     },
 
     /** Replaces the whole log — used by backup import. */

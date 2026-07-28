@@ -1,17 +1,18 @@
-import { el, replaceChildren } from "./dom.js";
+import { el, fragment, replaceChildren } from "./dom.js";
 import { isoDateStamp } from "./format.js";
-import { PLAN, RUN_DAY_ID, findDay } from "./plan.js";
+import { clampSets, clonePlan, displayName, findDay, newPlan, slotName } from "./plan.js";
 import {
-  clampSetCount,
   countDayEntries,
+  countOrphans,
+  countPlanEntries,
   hasCustomSetCounts,
   parseBackup,
-  runHasData,
 } from "./state.js";
 import { resolveLocale, setLocale, t } from "./i18n/index.js";
 import { renderSelectors } from "./views/selectors.js";
-import { exerciseName, renderDayView } from "./views/day.js";
-import { renderRunningView } from "./views/running.js";
+import { dayTitle, renderDayView } from "./views/day.js";
+import { renderPlansView } from "./views/plans.js";
+import { renderPlanEditor } from "./views/planEditor.js";
 import { renderTools } from "./views/tools.js";
 import { updateBanners, wireBanners } from "./views/banners.js";
 
@@ -19,17 +20,43 @@ import { updateBanners, wireBanners } from "./views/banners.js";
  * Wires the store to the DOM.
  *
  * Rendering is deliberately whole-view: every structural change rebuilds <main> from
- * state. The DOM is a few dozen nodes and render() is never called from an input handler,
- * so there is nothing to gain from finer-grained updates — and a lot of stale-node bugs
- * to avoid.
+ * state. The DOM is a few dozen nodes and render() is never called from a text input's
+ * handler, so there is nothing to gain from finer-grained updates — and a lot of
+ * stale-node bugs to avoid.
+ *
+ * Three screens share that one <main>: the training log, the plan library, and the plan
+ * editor. Which one is showing is in-memory only, never persisted — reopening the app in
+ * the editor would be exactly wrong halfway through a session at the gym.
  */
 export function createApp({ store, elements }) {
+  let screen = "log";
+  /** The plan being edited: a copy, so abandoning the editor changes nothing. */
+  let draft = null;
+  /** Last rendered position, so only real navigation scrolls back to the top. */
+  let lastAnchor = null;
+
+  /**
+   * Preferences hold ids, not references, and an id can go stale — a plan deleted, a day
+   * removed, a backup imported over the top. Everything is resolved here, at render time,
+   * with a fallback, rather than being defended against at each use.
+   */
+  const activePlan = () => store.findPlan(store.prefs.planId) ?? store.plans[0];
+  const activeDay = (plan) => findDay(plan, store.prefs.day) ?? plan.days[0];
+  const activeWeek = (plan) => Math.min(Math.max(store.prefs.week, 1), plan.weeks);
+
+  const planLabel = (plan) => displayName(plan) || t("plans.untitled");
+
   function applyLocale(tag) {
     const resolved = setLocale(tag);
     document.documentElement.lang = resolved;
     document.title = t("app.name");
     elements.metaDescription?.setAttribute("content", t("app.description"));
     return resolved;
+  }
+
+  function goTo(next) {
+    screen = next;
+    render();
   }
 
   function selectWeek(week) {
@@ -48,56 +75,108 @@ export function createApp({ store, elements }) {
   }
 
   /** Adds or removes the last set, confirming first if that set holds data. */
-  function changeSetCount(day, exercise, delta) {
-    const week = store.prefs.week;
-    const current = store.getSetCount(week, day.id, exercise);
-    const next = clampSetCount(current + delta);
+  function changeSetCount(slot, delta) {
+    const plan = activePlan();
+    const week = activeWeek(plan);
+    const current = store.getSetCount(plan.id, week, slot);
+    const next = clampSets(current + delta);
     if (next === current) return;
 
     if (next < current) {
       const lastIndex = current - 1;
-      const hasData = Boolean(store.getEntry(week, day.id, exercise.id, lastIndex));
+      const hasData = Boolean(store.getEntry(plan.id, week, slot.id, lastIndex));
       const confirmed =
         !hasData ||
         window.confirm(
-          t("exercise.removeSetConfirm", {
-            set: current,
-            exercise: exerciseName(exercise.id),
-          }),
+          t("exercise.removeSetConfirm", { set: current, exercise: slotName(slot) }),
         );
       if (!confirmed) return;
-      store.deleteEntry(week, day.id, exercise.id, lastIndex);
+      store.deleteEntry(plan.id, week, slot.id, lastIndex);
     }
 
-    store.setSetCount(week, day.id, exercise, next);
+    store.setSetCount(plan.id, week, slot, next);
     render();
   }
 
   function clearDay(day) {
-    const week = store.prefs.week;
-    const count = countDayEntries(store.state, week, day);
+    const plan = activePlan();
+    const week = activeWeek(plan);
+    const count = countDayEntries(store.state, plan.id, week, day);
 
-    if (count === 0 && !hasCustomSetCounts(store.state, week, day)) {
+    if (count === 0 && !hasCustomSetCounts(store.state, plan.id, week, day)) {
       window.alert(t("day.clearEmpty"));
       return;
     }
-    const message = t("day.clearConfirm", { week, day: t(`plan.days.${day.id}`), n: count });
+    const message = t("day.clearConfirm", { week, day: dayTitle(plan, day), n: count });
     if (!window.confirm(message)) return;
 
-    store.clearDay(week, day);
+    store.clearDay(plan.id, week, day);
     render();
   }
 
-  function clearRun(week) {
-    if (!runHasData(store.getRun(week))) {
-      window.alert(t("run.clearEmpty"));
+  // ── Plans ──────────────────────────────────────────────────────────────────────────
+
+  function usePlan(plan) {
+    store.setPref("planId", plan.id);
+    store.setPref("day", plan.days[0].id);
+    store.setPref("week", 1);
+    goTo("log");
+  }
+
+  function createPlan() {
+    // Nothing is stored until the editor is done, so abandoning a new plan leaves no
+    // half-built entry behind in the library.
+    draft = newPlan(t("plans.newName"));
+    goTo("editor");
+  }
+
+  function editPlan(plan) {
+    draft = clonePlan(plan);
+    goTo("editor");
+  }
+
+  function duplicatePlan(plan) {
+    store.duplicatePlan(plan.id, t("plans.copyName", { name: planLabel(plan) }));
+    render();
+  }
+
+  function deletePlan(plan) {
+    if (store.plans.length <= 1) {
+      window.alert(t("plans.removeLast"));
       return;
     }
-    if (!window.confirm(t("run.clearConfirm", { week }))) return;
 
-    store.deleteRun(week);
-    render();
+    const records = countPlanEntries(store.state, plan.id);
+    const message =
+      records > 0
+        ? t("plans.removeConfirm", { plan: planLabel(plan), n: records })
+        : t("plans.removeConfirmEmpty", { plan: planLabel(plan) });
+    if (!window.confirm(message)) return;
+
+    store.deletePlan(plan.id);
+    render(); // a now-stale prefs.planId resolves to the first plan on the way through
   }
+
+  /**
+   * Commits the draft. Every edit made in the editor lands at once, so this is the single
+   * point where the user is told what the change costs: reordering and renaming are free,
+   * but removing a day or shortening a block takes records with it.
+   */
+  function savePlan() {
+    const orphans = countOrphans(store.state, draft);
+    if (orphans > 0 && !window.confirm(t("planEditor.dropRecordsConfirm", { n: orphans }))) {
+      return;
+    }
+
+    const saved = store.updatePlan(draft);
+    if (store.prefs.planId === saved.id && !findDay(saved, store.prefs.day)) {
+      store.setPref("day", saved.days[0].id);
+    }
+    draft = null;
+    goTo("plans");
+  }
+
+  // ── Backup ─────────────────────────────────────────────────────────────────────────
 
   function exportBackup() {
     store.markExported();
@@ -132,6 +211,7 @@ export function createApp({ store, elements }) {
           return;
         }
         store.replaceState(imported);
+        screen = "log";
         render();
         window.alert(t("tools.importDone"));
       } catch {
@@ -146,48 +226,84 @@ export function createApp({ store, elements }) {
     reader.readAsText(file);
   }
 
-  function render() {
-    const { week, day: dayId } = store.prefs;
-    const isRunDay = dayId === RUN_DAY_ID;
-    // An unknown day id (hand-edited prefs, older build) falls back to the first day.
-    const day = isRunDay ? null : (findDay(dayId) ?? PLAN[0]);
+  // ── Rendering ──────────────────────────────────────────────────────────────────────
 
-    elements.appTitle.textContent = t("app.name");
-    elements.appFooter.textContent = t("app.footer", { app: t("app.name") });
-    elements.context.textContent = isRunDay
-      ? t("header.contextRun", { week })
-      : t("header.context", { week });
+  function contextText(week) {
+    if (screen === "plans") return t("header.contextPlans");
+    if (screen === "editor") return t("header.contextEditor");
+    return t("header.context", { week });
+  }
 
-    renderSelectors({
-      elements,
-      prefs: store.prefs,
-      onSelectWeek: selectWeek,
-      onSelectDay: selectDay,
-    });
-
-    const view = isRunDay
-      ? renderRunningView({ store, week, onClearRun: clearRun })
-      : renderDayView({
-          store,
-          week,
-          day,
-          onChangeSetCount: changeSetCount,
-          onClearDay: clearDay,
-        });
-
-    replaceChildren(
-      elements.content,
-      view,
+  function currentView(plan, week, day) {
+    if (screen === "editor") {
+      return renderPlanEditor({ draft, onChange: render, onDone: savePlan });
+    }
+    if (screen === "plans") {
+      return renderPlansView({
+        store,
+        activePlanId: plan.id,
+        onUse: usePlan,
+        onEdit: editPlan,
+        onDuplicate: duplicatePlan,
+        onDelete: deletePlan,
+        onCreate: createPlan,
+        onBack: () => goTo("log"),
+      });
+    }
+    return fragment(
+      renderDayView({
+        store,
+        plan,
+        week,
+        day,
+        onChangeSetCount: changeSetCount,
+        onClearDay: clearDay,
+      }),
       renderTools({
         store,
+        plan,
+        onManagePlans: () => goTo("plans"),
         onExport: exportBackup,
         onImport: openImportPicker,
         onLocaleChange: changeLocale,
       }),
     );
+  }
 
+  function render() {
+    const plan = activePlan();
+    const week = activeWeek(plan);
+    const day = activeDay(plan);
+
+    elements.appTitle.textContent = t("app.name");
+    elements.appFooter.textContent = t("app.footer", { app: t("app.name") });
+    elements.context.textContent = contextText(week);
+
+    // The week and day chips belong to the training log; the other screens are not
+    // scoped to a week, and leaving the chips up would invite tapping them.
+    const isLog = screen === "log";
+    elements.selectors.classList.toggle("hidden", !isLog);
+    if (isLog) {
+      renderSelectors({
+        elements,
+        plan,
+        week,
+        dayId: day.id,
+        onSelectWeek: selectWeek,
+        onSelectDay: selectDay,
+      });
+    }
+
+    replaceChildren(elements.content, currentView(plan, week, day));
     updateBanners({ elements, store });
-    window.scrollTo(0, 0);
+
+    // Only real navigation jumps back to the top: a stepper re-render must leave the
+    // page where the thumb left it.
+    const anchor = `${screen}|${plan.id}|${week}|${day.id}`;
+    if (anchor !== lastAnchor) {
+      window.scrollTo(0, 0);
+      lastAnchor = anchor;
+    }
   }
 
   function start() {
