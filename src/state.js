@@ -26,8 +26,10 @@
  * not the schema revision, and renaming it would strand every existing log.
  *
  * ── Records are plan-scoped ──────────────────────────────────────────────────────────
- * Every key starts with a plan id, and the previous-record lookup never leaves the plan
- * it was asked about. Starting a new block starts a clean slate on purpose.
+ * Every key starts with a plan id. Mutations never leave the plan they were asked about.
+ * The previous-record lookup is the one exception: it prefers the same plan's own earlier
+ * weeks, but falls back to the same exercise and set index in another plan so a new block
+ * still shows a target to beat — see findPrevious.
  *
  * The whole state is kept self-consistent: an entry whose plan, slot, or week no longer
  * exists is pruned rather than kept as invisible ballast. That is what makes editing a
@@ -273,16 +275,40 @@ export function newestByExercise(state) {
 }
 
 /**
- * The "target to beat": the most recent filled record of the same slot and set in an
- * earlier week of the same plan. Walks backwards so a skipped week falls through to the
- * one before it. It never looks into another plan — a new block starts clean.
+ * The "target to beat".
+ *
+ * First the slot's own history: the most recent filled record of the same set in an earlier
+ * week of the same plan. That is the precise answer and it always wins.
+ *
+ * Failing that, the same *exercise* at the same set index from any other plan. This is what
+ * carries a lift's numbers across a block boundary — without it, week 1 of every new plan
+ * shows nothing, which is exactly when knowing the number matters most.
+ *
+ * Records from the plan being viewed are never offered as the fallback. One plan can place
+ * the same exercise twice on purpose (heavy day, light day); those are separate
+ * progressions, and crossing them would suggest a target from the wrong kind of work.
  */
-export function findPrevious(state, planId, week, slotId, setIndex) {
+export function findPrevious(
+  state,
+  planId,
+  week,
+  slotId,
+  setIndex,
+  index = newestByExercise(state),
+) {
   for (let candidate = week - 1; candidate >= 1; candidate--) {
     const entry = getEntry(state, planId, candidate, slotId, setIndex);
-    if (entryHasData(entry)) return { week: candidate, ...entry };
+    if (entryHasData(entry)) return { source: "plan", week: candidate, ...entry };
   }
-  return null;
+
+  const plan = findPlan(state.plans, planId);
+  const slot = plan && findSlot(plan, slotId);
+  if (!slot) return null;
+
+  const elsewhere = (index.get(`${slot.exerciseId}|${setIndex}`) ?? []).find(
+    (record) => record.planId !== planId,
+  );
+  return elsewhere ? { source: "other", ...elsewhere.entry } : null;
 }
 
 /**
@@ -357,7 +383,18 @@ export function createStore(storage = globalThis.localStorage, { now = () => Dat
     }
   }
 
-  const saveState = () => persist(STATE_KEY, state);
+  /**
+   * The exercise index is derived, so it is cached rather than stored — and dropped in
+   * saveState() rather than in each mutator, because every write already funnels through
+   * there. A mutator added later cannot forget to invalidate it.
+   */
+  let exerciseIndex = null;
+  const index = () => (exerciseIndex ??= newestByExercise(state));
+
+  const saveState = () => {
+    exerciseIndex = null;
+    persist(STATE_KEY, state);
+  };
   const savePrefs = () => persist(PREFS_KEY, prefs);
 
   function addPlan(plan) {
@@ -397,7 +434,7 @@ export function createStore(storage = globalThis.localStorage, { now = () => Dat
       getEntry(state, planId, week, slotId, setIndex),
     getSetCount: (planId, week, slot) => getSetCount(state, planId, week, slot),
     findPrevious: (planId, week, slotId, setIndex) =>
-      findPrevious(state, planId, week, slotId, setIndex),
+      findPrevious(state, planId, week, slotId, setIndex, index()),
 
     /** Writes one field of one set. Rows left entirely empty are removed, not stored. */
     setEntryField(planId, week, slotId, setIndex, field, value) {

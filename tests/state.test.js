@@ -301,29 +301,114 @@ describe("findPrevious", () => {
   );
 
   it("walks back to the most recent earlier week", () => {
-    assert.deepEqual(findPrevious(state, "p1", 4, "s-bench", 0), { week: 3, kg: 65, reps: 8 });
+    assert.deepEqual(findPrevious(state, "p1", 4, "s-bench", 0), {
+      source: "plan",
+      week: 3,
+      kg: 65,
+      reps: 8,
+    });
   });
 
   it("falls through a skipped week", () => {
-    assert.deepEqual(findPrevious(state, "p1", 3, "s-bench", 0), { week: 1, kg: 60, reps: 8 });
+    assert.deepEqual(findPrevious(state, "p1", 3, "s-bench", 0), {
+      source: "plan",
+      week: 1,
+      kg: 60,
+      reps: 8,
+    });
   });
 
   it("has nothing to offer in week 1", () => {
     assert.equal(findPrevious(state, "p1", 1, "s-bench", 0), null);
   });
+});
 
-  it("never leaves the plan it was asked about", () => {
-    const twoPlans = normalizeState({
-      entries: { "p1|1|s-bench|0": { kg: 60, reps: 8 } },
-      plans: [testPlan(), { ...testPlan(), id: "p2" }],
+describe("findPrevious across blocks", () => {
+  const twoPlans = (entries) =>
+    normalizeState({ plans: [testPlan(), { ...testPlan(), id: "p2" }], entries });
+
+  it("inherits the target to beat from an older block", () => {
+    const state = twoPlans({ "p1|1|s-bench|0": { kg: 60, reps: 8, at: 100 } });
+
+    assert.deepEqual(findPrevious(state, "p2", 1, "s-bench", 0), {
+      source: "other",
+      kg: 60,
+      reps: 8,
+      at: 100,
+    });
+  });
+
+  it("prefers the block that was logged most recently", () => {
+    const state = normalizeState({
+      plans: [testPlan(), { ...testPlan(), id: "p2" }, { ...testPlan(), id: "p3" }],
+      entries: {
+        "p1|1|s-bench|0": { kg: 60, reps: 8, at: 300 },
+        "p2|1|s-bench|0": { kg: 70, reps: 8, at: 100 },
+      },
     });
 
-    assert.ok(findPrevious(twoPlans, "p1", 2, "s-bench", 0));
+    assert.equal(findPrevious(state, "p3", 1, "s-bench", 0).kg, 60);
+  });
+
+  it("still prefers this block's own history over any other", () => {
+    const state = twoPlans({
+      "p1|1|s-bench|0": { kg: 60, reps: 8, at: 100 },
+      "p2|1|s-bench|0": { kg: 90, reps: 8, at: 999 },
+    });
+
+    assert.deepEqual(findPrevious(state, "p1", 2, "s-bench", 0), {
+      source: "plan",
+      week: 1,
+      kg: 60,
+      reps: 8,
+      at: 100,
+    });
+  });
+
+  it("never offers a record from the block being viewed", () => {
+    // The same lift placed twice in one plan — heavy on one day, light on another — is two
+    // progressions on purpose. A back-off set must not become the target for a heavy one.
+    const plan = testPlan();
+    plan.days[1].slots.push({
+      id: "s-bench-light",
+      exerciseId: "bench-press",
+      name: null,
+      nameKey: null,
+      sets: 3,
+      reps: [12, 15],
+    });
+    const state = normalizeState({
+      plans: [plan],
+      entries: { "p1|1|s-bench-light|0": { kg: 40, reps: 15, at: 100 } },
+    });
+
     assert.equal(
-      findPrevious(twoPlans, "p2", 2, "s-bench", 0),
+      findPrevious(state, "p1", 2, "s-bench", 0),
       null,
-      "a new block starts with a clean slate",
+      "the heavy slot shows no target rather than the light slot's numbers",
     );
+  });
+
+  it("matches the set index", () => {
+    const state = twoPlans({ "p1|1|s-bench|0": { kg: 60, reps: 8, at: 100 } });
+    assert.equal(findPrevious(state, "p2", 1, "s-bench", 3), null);
+  });
+
+  it("has nothing to offer for a lift never logged anywhere", () => {
+    const state = twoPlans({ "p1|1|s-bench|0": { kg: 60, reps: 8, at: 100 } });
+    assert.equal(findPrevious(state, "p2", 1, "s-abs", 0), null);
+  });
+
+  it("orders untimestamped blocks by creation order", () => {
+    const state = normalizeState({
+      plans: [testPlan(), { ...testPlan(), id: "p2" }, { ...testPlan(), id: "p3" }],
+      entries: {
+        "p1|1|s-bench|0": { kg: 60, reps: 8 },
+        "p2|1|s-bench|0": { kg: 70, reps: 8 },
+      },
+    });
+
+    assert.equal(findPrevious(state, "p3", 1, "s-bench", 0).kg, 70);
   });
 });
 
@@ -606,6 +691,59 @@ describe("preferences", () => {
     store.setPref("week", 3);
     assert.equal(storage.read(PREFS_KEY).week, 3);
     assert.equal(store.prefs.week, 3);
+  });
+});
+
+describe("the exercise index the store memoizes", () => {
+  it("reflects a record written after it was first read", () => {
+    const store = createStore(
+      fakeStorage({
+        [STATE_KEY]: JSON.stringify({
+          version: STATE_VERSION,
+          lastExport: null,
+          plans: [testPlan(), { ...testPlan(), id: "p2" }],
+          entries: {},
+          setCounts: {},
+        }),
+      }),
+      { now: () => 1000 },
+    );
+
+    assert.equal(store.findPrevious("p2", 1, "s-bench", 0), null, "nothing logged yet");
+
+    store.setEntryField("p1", 1, "s-bench", 0, "kg", 60);
+
+    assert.equal(
+      store.findPrevious("p2", 1, "s-bench", 0)?.kg,
+      60,
+      "a stale memo would still say null",
+    );
+  });
+
+  it("forgets what an imported backup replaced", () => {
+    const store = createStore(
+      fakeStorage({
+        [STATE_KEY]: JSON.stringify({
+          version: STATE_VERSION,
+          lastExport: null,
+          plans: [testPlan(), { ...testPlan(), id: "p2" }],
+          entries: { "p1|1|s-bench|0": { kg: 60, reps: 8, at: 100 } },
+          setCounts: {},
+        }),
+      }),
+    );
+
+    assert.equal(store.findPrevious("p2", 1, "s-bench", 0)?.kg, 60);
+
+    store.replaceState({
+      version: STATE_VERSION,
+      lastExport: null,
+      plans: [testPlan(), { ...testPlan(), id: "p2" }],
+      entries: {},
+      setCounts: {},
+    });
+
+    assert.equal(store.findPrevious("p2", 1, "s-bench", 0), null);
   });
 });
 
