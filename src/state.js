@@ -3,7 +3,7 @@
  *
  * ── Storage schema (FROZEN — do not rename anything in this block) ───────────────────
  *
- * localStorage["progressao:v1"]  the training log
+ * localStorage["progression:v1"]  the training log
  *   {
  *     version: 1,
  *     lastExport: number | null,          // epoch ms of the last JSON export
@@ -12,22 +12,33 @@
  *     runs:      { "<week>": { dist, time, cycles } }
  *   }
  *
- * localStorage["progressao:ui"]  UI preferences (disposable; losing it loses nothing)
+ * localStorage["progression:ui"]  UI preferences (disposable; losing it loses nothing)
  *   { week, day, locale, backupDismissedAt, installDismissed }
  *
- * The storage keys and every id inside them (`d1`..`d4`, `supino-reto`, the `dist`/`time`/
- * `cycles` field names) are Portuguese-derived but are treated as opaque identifiers, not
- * as prose. They predate this refactor and exist on users' devices; renaming any of them
- * would orphan real training history and break every backup file already exported. The
- * user-facing English/Portuguese text is resolved from these ids at render time via
- * src/i18n. Only ever add fields here — never rename or repurpose one.
+ * The two top-level keys were renamed from `progressao:*` when the repository moved to
+ * English. Installs that predate the rename are migrated on first load — see
+ * readWithMigration below — so no training history is orphaned. Keep that fallback
+ * indefinitely: a device that has not opened the app since the rename still holds the
+ * old keys, and there is no other path back to that data.
+ *
+ * Every id *inside* the state (`d1`..`d4`, `supino-reto`, the `dist`/`time`/`cycles`
+ * field names) stays Portuguese-derived and is still frozen. Unlike the top-level keys
+ * these are also written into every backup file ever exported, where no migration can
+ * reach them; they are opaque identifiers, not prose. The user-facing English/Portuguese
+ * text is resolved from them at render time via src/i18n. Only ever add fields here —
+ * never rename or repurpose one.
  * ─────────────────────────────────────────────────────────────────────────────────────
  */
 
 import { MAX_SETS, MIN_SETS, PLAN, WEEKS } from "./plan.js";
 
-export const STATE_KEY = "progressao:v1";
-export const PREFS_KEY = "progressao:ui";
+export const STATE_KEY = "progression:v1";
+export const PREFS_KEY = "progression:ui";
+
+/** Pre-rename keys, read once per install and then migrated away. */
+export const LEGACY_STATE_KEY = "progressao:v1";
+export const LEGACY_PREFS_KEY = "progressao:ui";
+
 export const STATE_VERSION = 1;
 
 /** Fields of a running session, in display order. */
@@ -164,14 +175,39 @@ function readJSON(storage, key) {
 }
 
 /**
- * Creates the app store over a Storage-like object (anything with getItem/setItem).
+ * Reads `key`, falling back to the pre-rename `legacyKey` and moving the value across.
+ *
+ * The copy is written before the old key is dropped, so a storage failure mid-migration
+ * leaves the original untouched and the next load simply tries again. A corrupt legacy
+ * blob reads as null and is left alone rather than destroyed.
+ */
+function readWithMigration(storage, key, legacyKey) {
+  const current = readJSON(storage, key);
+  if (current != null) return current;
+
+  const legacy = readJSON(storage, legacyKey);
+  if (legacy == null) return null;
+
+  try {
+    storage.setItem(key, JSON.stringify(legacy));
+    storage.removeItem(legacyKey);
+  } catch (error) {
+    // Migration failed (quota, storage disabled). The data is still readable under the
+    // old key, so this session works and the next load retries.
+    console.warn("Could not migrate storage to the renamed key", error);
+  }
+  return legacy;
+}
+
+/**
+ * Creates the app store over a Storage-like object (getItem/setItem/removeItem).
  * Tests inject a fake; the browser passes localStorage.
  *
  * Every mutator writes through immediately — the app has no explicit save action.
  */
 export function createStore(storage = globalThis.localStorage) {
-  let state = normalizeState(readJSON(storage, STATE_KEY));
-  let prefs = normalizePrefs(readJSON(storage, PREFS_KEY));
+  let state = normalizeState(readWithMigration(storage, STATE_KEY, LEGACY_STATE_KEY));
+  let prefs = normalizePrefs(readWithMigration(storage, PREFS_KEY, LEGACY_PREFS_KEY));
 
   function persist(key, value) {
     try {

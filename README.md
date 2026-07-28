@@ -134,11 +134,16 @@ trivial. IndexedDB would be overkill.
 Saving is **automatic**: every field edit is written immediately. There is no save button.
 
 ### The storage schema is frozen
-Keys inside storage — `progressao:v1`, `progressao:ui`, the day ids `d1`–`d4`, and the
-Portuguese exercise ids such as `supino-reto` — are **opaque identifiers, not labels**.
-They exist in every install and in every backup file ever exported, so they are deliberately
-left in Portuguese even though the codebase is English. Renaming one would orphan real
-training history. Display names are resolved from these ids at render time through
+The two top-level keys are `progression:v1` (the training log) and `progression:ui`
+(preferences). They were renamed from `progressao:*` when the repository moved to English;
+installs predating the rename are migrated on first load, so no history was orphaned. That
+fallback is permanent — a phone that has not opened the app since the rename still holds
+the old keys, and nothing else can recover that data.
+
+Everything *inside* the state — the day ids `d1`–`d4` and the Portuguese exercise ids such
+as `supino-reto` — is **opaque identifiers, not labels**, and stays frozen. Unlike the
+top-level keys these are written into every backup file ever exported, where no migration
+can reach them. Display names are resolved from these ids at render time through
 `src/i18n`. See the header comment in `src/state.js`. Only ever add fields — never rename
 or repurpose one.
 

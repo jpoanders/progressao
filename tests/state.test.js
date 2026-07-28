@@ -4,6 +4,8 @@ import { describe, it } from "node:test";
 
 import { findDay } from "../src/plan.js";
 import {
+  LEGACY_PREFS_KEY,
+  LEGACY_STATE_KEY,
   PREFS_KEY,
   STATE_KEY,
   clampSetCount,
@@ -43,10 +45,74 @@ const abs = findDay("d2").exercises.find((exercise) => exercise.id === "abdomina
 
 describe("storage keys", () => {
   it("are frozen — changing these orphans real user data", () => {
-    assert.equal(STATE_KEY, "progressao:v1");
-    assert.equal(PREFS_KEY, "progressao:ui");
+    assert.equal(STATE_KEY, "progression:v1");
+    assert.equal(PREFS_KEY, "progression:ui");
     assert.equal(entryKey(2, "d1", "supino-reto", 0), "2|d1|supino-reto|0");
     assert.equal(setCountKey(2, "d1", "supino-reto"), "2|d1|supino-reto");
+  });
+
+  it("keep the pre-rename keys readable for installs that predate the rename", () => {
+    assert.equal(LEGACY_STATE_KEY, "progressao:v1");
+    assert.equal(LEGACY_PREFS_KEY, "progressao:ui");
+  });
+});
+
+describe("migration off the pre-rename keys", () => {
+  const legacyState = {
+    version: 1,
+    lastExport: 123,
+    entries: { "1|d1|supino-reto|0": { kg: 60, reps: 8 } },
+    setCounts: {},
+    runs: {},
+  };
+
+  it("adopts the log left under the old key and rewrites it under the new one", () => {
+    const storage = fakeStorage({ [LEGACY_STATE_KEY]: JSON.stringify(legacyState) });
+    const store = createStore(storage);
+
+    assert.deepEqual(store.state, legacyState, "the history must survive the rename");
+    assert.deepEqual(storage.read(STATE_KEY), legacyState);
+    assert.equal(storage.getItem(LEGACY_STATE_KEY), null, "the old key is cleared once copied");
+  });
+
+  it("migrates preferences too", () => {
+    const storage = fakeStorage({
+      [LEGACY_PREFS_KEY]: JSON.stringify({ week: 3, day: "d2", locale: "pt-BR" }),
+    });
+    const store = createStore(storage);
+
+    assert.equal(store.prefs.week, 3);
+    assert.equal(store.prefs.locale, "pt-BR");
+    assert.equal(storage.read(PREFS_KEY).week, 3);
+    assert.equal(storage.getItem(LEGACY_PREFS_KEY), null);
+  });
+
+  it("prefers the new key and leaves the stale legacy value alone", () => {
+    const current = { ...legacyState, lastExport: 999 };
+    const storage = fakeStorage({
+      [STATE_KEY]: JSON.stringify(current),
+      [LEGACY_STATE_KEY]: JSON.stringify(legacyState),
+    });
+
+    assert.deepEqual(createStore(storage).state, current);
+    assert.deepEqual(storage.read(LEGACY_STATE_KEY), legacyState, "no write-back to the old key");
+  });
+
+  it("starts clean when the legacy key holds an unreadable blob", () => {
+    const storage = fakeStorage({ [LEGACY_STATE_KEY]: "{not json" });
+
+    assert.deepEqual(createStore(storage).state, emptyState());
+    assert.equal(storage.getItem(LEGACY_STATE_KEY), "{not json", "a corrupt blob is not destroyed");
+  });
+
+  it("keeps working when the migration write fails", () => {
+    const storage = fakeStorage({ [LEGACY_STATE_KEY]: JSON.stringify(legacyState) });
+    storage.setItem = () => {
+      throw new Error("quota exceeded");
+    };
+
+    assert.deepEqual(createStore(storage).state, legacyState, "the session still sees the log");
+    assert.deepEqual(storage.read(LEGACY_STATE_KEY), legacyState, "the original is left to retry");
   });
 });
 
