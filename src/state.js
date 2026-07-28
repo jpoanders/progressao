@@ -35,7 +35,15 @@
  */
 
 import { ENTRY_FIELDS, entryFields } from "./catalog.js";
-import { MAX_SETS, clampSets, defaultPlan, findPlan, normalizePlan, weeksOf } from "./plan.js";
+import {
+  MAX_SETS,
+  clampSets,
+  defaultPlan,
+  findPlan,
+  findSlot,
+  normalizePlan,
+  weeksOf,
+} from "./plan.js";
 
 export const STATE_KEY = "progression:v2";
 export const PREFS_KEY = "progression:ui";
@@ -202,6 +210,66 @@ export function getSetCount(state, planId, week, slot) {
 
 export function entryHasData(entry) {
   return Boolean(entry) && ENTRY_FIELDS.some((field) => entry[field] != null);
+}
+
+/**
+ * Sort comparator, most recent first: timestamp, then plan order, then week.
+ *
+ * The two fallbacks are not decoration. Every record written before schema 3 has no
+ * timestamp, so on the first upgrade `at` alone would leave a user's whole history in
+ * arbitrary order. Plan order (plans are appended as they are created) and week make the
+ * comparison total.
+ */
+function byRecency(a, b) {
+  const aAt = a.entry.at ?? -Infinity;
+  const bAt = b.entry.at ?? -Infinity;
+  if (aAt !== bAt) return bAt - aAt;
+  if (a.planOrder !== b.planOrder) return b.planOrder - a.planOrder;
+  return b.week - a.week;
+}
+
+/**
+ * Every logged exercise, indexed by `exerciseId|setIndex` — what lets a new block inherit
+ * the target to beat from an older one.
+ *
+ * Holds one record *per plan* rather than a single winner: the newest record for a lift may
+ * well sit in the plan the user is looking at, and findPrevious has to be able to skip past
+ * it to the next plan down. The array is one element per plan, so it stays small.
+ *
+ * A projection, never stored. The store rebuilds it on demand and throws it away on write.
+ */
+export function newestByExercise(state) {
+  const planOrder = new Map(state.plans.map((plan, index) => [plan.id, index]));
+  const exerciseOf = new Map(
+    state.plans.flatMap((plan) =>
+      plan.days.flatMap((day) =>
+        day.slots.map((slot) => [`${plan.id}|${slot.id}`, slot.exerciseId]),
+      ),
+    ),
+  );
+
+  const bestPerPlan = new Map();
+  for (const [key, entry] of Object.entries(state.entries)) {
+    const [planId, week, slotId, setIndex] = key.split("|");
+    const exerciseId = exerciseOf.get(`${planId}|${slotId}`);
+    if (exerciseId === undefined) continue;
+
+    const candidate = { planId, planOrder: planOrder.get(planId), week: Number(week), entry };
+    const indexKey = `${exerciseId}|${setIndex}`;
+
+    let perPlan = bestPerPlan.get(indexKey);
+    if (!perPlan) bestPerPlan.set(indexKey, (perPlan = new Map()));
+
+    const held = perPlan.get(planId);
+    if (!held || byRecency(candidate, held) < 0) perPlan.set(planId, candidate);
+  }
+
+  return new Map(
+    [...bestPerPlan].map(([indexKey, perPlan]) => [
+      indexKey,
+      [...perPlan.values()].sort(byRecency),
+    ]),
+  );
 }
 
 /**

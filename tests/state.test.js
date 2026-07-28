@@ -16,6 +16,7 @@ import {
   findPrevious,
   getSetCount,
   hasCustomSetCounts,
+  newestByExercise,
   normalizePrefs,
   normalizeState,
   parseBackup,
@@ -605,6 +606,90 @@ describe("preferences", () => {
     store.setPref("week", 3);
     assert.equal(storage.read(PREFS_KEY).week, 3);
     assert.equal(store.prefs.week, 3);
+  });
+});
+
+describe("newestByExercise", () => {
+  const twoPlans = (entries) =>
+    normalizeState({
+      plans: [testPlan(), { ...testPlan(), id: "p2" }],
+      entries,
+    });
+
+  it("indexes a record by its exercise and set, not by its slot", () => {
+    const index = newestByExercise(twoPlans({ "p1|1|s-bench|0": { kg: 60, reps: 8, at: 100 } }));
+
+    assert.equal(index.get("bench-press|0").length, 1);
+    assert.deepEqual(index.get("bench-press|0")[0].entry, { kg: 60, reps: 8, at: 100 });
+  });
+
+  it("keeps the newest record of each plan, not just the newest overall", () => {
+    const index = newestByExercise(
+      twoPlans({
+        "p1|1|s-bench|0": { kg: 60, reps: 8, at: 100 },
+        "p1|2|s-bench|0": { kg: 65, reps: 8, at: 200 },
+        "p2|1|s-bench|0": { kg: 70, reps: 8, at: 300 },
+      }),
+    );
+
+    const records = index.get("bench-press|0");
+    assert.equal(records.length, 2, "one per plan");
+    assert.deepEqual(
+      records.map((record) => record.planId),
+      ["p2", "p1"],
+      "most recent plan first",
+    );
+    assert.equal(records[1].entry.kg, 65, "p1 is represented by its newer record");
+  });
+
+  it("sorts a record with no timestamp below one that has it", () => {
+    const index = newestByExercise(
+      twoPlans({
+        "p1|1|s-bench|0": { kg: 60, reps: 8 },
+        "p2|1|s-bench|0": { kg: 70, reps: 8, at: 1 },
+      }),
+    );
+
+    assert.deepEqual(
+      index.get("bench-press|0").map((record) => record.planId),
+      ["p2", "p1"],
+    );
+  });
+
+  it("falls back to plan order then week when nothing is timestamped", () => {
+    // The state every existing user upgrades into: no record carries `at`.
+    const index = newestByExercise(
+      twoPlans({
+        "p1|1|s-bench|0": { kg: 60, reps: 8 },
+        "p1|3|s-bench|0": { kg: 62, reps: 8 },
+        "p2|1|s-bench|0": { kg: 70, reps: 8 },
+      }),
+    );
+
+    const records = index.get("bench-press|0");
+    assert.deepEqual(
+      records.map((record) => record.planId),
+      ["p2", "p1"],
+      "the later-created plan wins",
+    );
+    assert.equal(records[1].week, 3, "and within a plan, the later week");
+  });
+
+  it("keys each set index separately", () => {
+    const index = newestByExercise(
+      twoPlans({
+        "p1|1|s-bench|0": { kg: 60, reps: 8, at: 100 },
+        "p1|1|s-bench|1": { kg: 55, reps: 8, at: 100 },
+      }),
+    );
+
+    assert.equal(index.get("bench-press|0")[0].entry.kg, 60);
+    assert.equal(index.get("bench-press|1")[0].entry.kg, 55);
+  });
+
+  it("is empty for an exercise nothing has been logged against", () => {
+    const index = newestByExercise(twoPlans({}));
+    assert.equal(index.get("bench-press|0"), undefined);
   });
 });
 
