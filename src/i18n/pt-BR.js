@@ -38,26 +38,41 @@ export default {
     exercise: {
       scheme: "{sets}×{min}-{max}",
       setCount: { one: "{n} série", other: "{n} séries" },
-      copy: "copiar",
-      copyAria: "Copiar valores anteriores da {set}ª série",
-      previousStrength: "↳ última vez (S{week}): {kg} × {reps}",
-      previousCardio: "↳ última vez (S{week}): {dist} · {time}",
-      previousEmpty: "↳ sem registro anterior",
+      columns: {
+        kg: "kg",
+        reps: "reps",
+        dist: "km",
+        time: "min",
+      },
+      pair: {
+        strength: "×",
+        cardio: "·",
+      },
+      weekTag: "s{n}",
+      useLastStrength: "Usar a semana {week}: {kg} × {reps}, {set}ª série",
+      useLastCardio: "Usar a semana {week}: {dist} · {time}, {set}ª série",
+      previousEmpty: "Sem registro anterior para a {set}ª série",
+      gain: {
+        kg: "+{n} kg",
+        dist: "+{n} km",
+        reps: { one: "+{n} rep", other: "+{n} reps" },
+      },
       addSetAria: "Adicionar série a {exercise}",
       removeSetAria: "Remover série de {exercise}",
       removeSetConfirm:
         "A {set}ª série de “{exercise}” tem dados que serão apagados. Remover mesmo assim?",
       fields: {
-        kg: { placeholder: "kg", aria: "carga da {set}ª série" },
-        reps: { placeholder: "reps", aria: "repetições da {set}ª série" },
-        dist: { placeholder: "km", aria: "distância da {set}ª série" },
-        time: { placeholder: "min", aria: "tempo da {set}ª série" },
+        kg: { placeholder: "", aria: "carga da {set}ª série" },
+        reps: { placeholder: "", aria: "repetições da {set}ª série" },
+        dist: { placeholder: "", aria: "distância da {set}ª série" },
+        time: { placeholder: "", aria: "tempo da {set}ª série" },
       },
     },
 
     day: {
-      empty: "Este dia ainda não tem exercícios. Adicione no editor de planos.",
-      clear: "Limpar este dia (Semana {week})",
+      empty: "Nenhum exercício neste dia ainda.",
+      emptyAction: "Editar este plano",
+      clear: "Limpar o registro deste dia",
       clearEmpty: "Este dia já está vazio.",
       clearConfirm: {
         one: "Limpar a Semana {week}, {day}? Apaga {n} registro e volta as séries ao padrão. Não dá para desfazer.",
@@ -157,8 +172,9 @@ export default {
 
     tools: {
       title: "Backup",
-      export: "Exportar JSON",
-      import: "Importar JSON",
+      export: "Fazer backup agora",
+      import: "Restaurar um backup",
+      note: "Restaurar substitui tudo que está neste aparelho.",
       lastBackup: "Último backup: {when}",
       importConfirm: "Importar vai SUBSTITUIR todo o progresso e os planos atuais. Continuar?",
       importDone: "Progresso importado com sucesso.",
@@ -173,8 +189,7 @@ export default {
 
     banner: {
       backupTitle: "Faça um backup",
-      backupBody: "Exporte seu progresso em JSON de tempos em tempos.",
-      backupAction: "Exportar",
+      backupBody: "Tudo fica salvo só neste aparelho. Guarde uma cópia em outro lugar.",
       dismissAria: "Dispensar",
       installTitle: "Instale na tela inicial",
       installBody:

@@ -34,19 +34,19 @@ import { t } from "../i18n/index.js";
 const stepper = ({ value, min, max, label, addAria, removeAria, onStep }) =>
   el(
     "div",
-    { class: "set-stepper" },
+    { class: "stepper" },
     el("button", {
       type: "button",
-      class: "btn step",
+      class: "btn btn--icon",
       text: "−",
       "aria-label": removeAria,
       disabled: value <= min,
       on: { click: () => onStep(-1) },
     }),
-    el("span", { class: "step-label", text: label }),
+    el("span", { class: "stepper-label", text: label }),
     el("button", {
       type: "button",
-      class: "btn step",
+      class: "btn btn--icon",
       text: "+",
       "aria-label": addAria,
       disabled: value >= max,
@@ -57,7 +57,7 @@ const stepper = ({ value, min, max, label, addAria, removeAria, onStep }) =>
 const iconButton = (symbol, ariaLabel, disabled, onClick) =>
   el("button", {
     type: "button",
-    class: "btn step",
+    class: "btn btn--icon",
     text: symbol,
     "aria-label": ariaLabel,
     disabled,
@@ -130,7 +130,7 @@ function slotRow({ day, slot, index, onChange }) {
       el(
         "div",
         { class: "rep-range" },
-        el("span", { class: "rep-label", text: t("planEditor.repsLabel") }),
+        el("span", { class: "eyebrow", text: t("planEditor.repsLabel") }),
         repInput({ slot, pair, index: 0, ariaLabel: t("planEditor.repsMinAria", { exercise: name }) }),
         el("span", { class: "rep-dash", text: "–" }),
         repInput({ slot, pair, index: 1, ariaLabel: t("planEditor.repsMaxAria", { exercise: name }) }),
@@ -182,7 +182,7 @@ function addExerciseRow({ day, onChange }) {
     select,
     el("button", {
       type: "button",
-      class: "btn accent",
+      class: "btn btn--primary",
       text: t("planEditor.addExercise"),
       on: {
         click: () => {
@@ -199,7 +199,7 @@ function dayCard({ draft, day, index, onChange }) {
 
   return el(
     "section",
-    { class: "day-card" },
+    { class: "card card--day" },
     el(
       "div",
       { class: "day-head" },
@@ -241,7 +241,7 @@ function dayCard({ draft, day, index, onChange }) {
       ),
     ),
     day.slots.length === 0
-      ? el("p", { class: "empty-note", text: t("planEditor.emptyDay") })
+      ? el("p", { class: "note", text: t("planEditor.emptyDay") })
       : day.slots.map((slot, slotIndex) =>
           slotRow({ day, slot, index: slotIndex, onChange }),
         ),
@@ -258,10 +258,10 @@ export function renderPlanEditor({ draft, onChange, onDone }) {
     el(
       "div",
       { class: "editor-head" },
-      el("p", { class: "day-title", text: t("planEditor.title") }),
+      el("h2", { class: "screen-title", tabIndex: -1, text: t("planEditor.title") }),
       el("button", {
         type: "button",
-        class: "btn accent",
+        class: "btn btn--primary",
         text: t("planEditor.done"),
         on: { click: onDone },
       }),
@@ -270,7 +270,7 @@ export function renderPlanEditor({ draft, onChange, onDone }) {
     el(
       "div",
       { class: "tools" },
-      el("div", { class: "tools-title", text: t("planEditor.nameLabel") }),
+      el("div", { class: "eyebrow", text: t("planEditor.nameLabel") }),
       nameInput({
         value: draft.name ?? (draft.nameKey ? t(draft.nameKey) : null),
         placeholder: t("planEditor.namePlaceholder"),
@@ -283,7 +283,7 @@ export function renderPlanEditor({ draft, onChange, onDone }) {
       el(
         "div",
         { class: "editor-row" },
-        el("span", { class: "tools-title", text: t("planEditor.weeksLabel") }),
+        el("span", { class: "eyebrow", text: t("planEditor.weeksLabel") }),
         stepper({
           value: draft.weeks,
           min: MIN_WEEKS,
@@ -299,12 +299,12 @@ export function renderPlanEditor({ draft, onChange, onDone }) {
       ),
     ),
 
-    el("p", { class: "day-title", text: t("planEditor.daysLabel") }),
+    el("div", { class: "eyebrow", text: t("planEditor.daysLabel") }),
     draft.days.map((day, index) => dayCard({ draft, day, index, onChange })),
 
     el(
       "div",
-      { class: "tools-row" },
+      { class: "actions" },
       el("button", {
         type: "button",
         class: "btn",

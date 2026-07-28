@@ -34,6 +34,8 @@ export function createApp({ store, elements }) {
   let draft = null;
   /** Last rendered position, so only real navigation scrolls back to the top. */
   let lastAnchor = null;
+  /** Last rendered screen, so only a screen change moves focus. */
+  let lastScreen = null;
 
   /**
    * Preferences hold ids, not references, and an id can go stale — a plan deleted, a day
@@ -258,6 +260,7 @@ export function createApp({ store, elements }) {
         day,
         onChangeSetCount: changeSetCount,
         onClearDay: clearDay,
+        onEditPlan: editPlan,
       }),
       renderTools({
         store,
@@ -303,6 +306,15 @@ export function createApp({ store, elements }) {
     if (anchor !== lastAnchor) {
       window.scrollTo(0, 0);
       lastAnchor = anchor;
+    }
+
+    // Changing screen replaces everything under <main>, which leaves a keyboard or screen
+    // reader user stranded at the top of the document. Moving to the new heading tells
+    // them where they landed. Not done on every render: a stepper tap must not steal
+    // focus from the input the thumb is in.
+    if (screen !== lastScreen) {
+      if (lastScreen !== null) elements.content.querySelector(".screen-title")?.focus();
+      lastScreen = screen;
     }
   }
 

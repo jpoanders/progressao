@@ -3,7 +3,7 @@
 // Bump CACHE_VERSION whenever a shipped file changes, otherwise devices that already
 // installed the app keep serving the old cache forever. Every file listed in SHELL must
 // exist: cache.addAll() rejects atomically, which would leave the app uncached.
-const CACHE_VERSION = 'progression-v5';
+const CACHE_VERSION = 'progression-v6';
 const SHELL = [
   './',
   './index.html',
@@ -15,6 +15,7 @@ const SHELL = [
   './src/dom.js',
   './src/format.js',
   './src/plan.js',
+  './src/progress.js',
   './src/state.js',
   './src/i18n/index.js',
   './src/i18n/en.js',
@@ -26,6 +27,7 @@ const SHELL = [
   './src/views/plans.js',
   './src/views/selectors.js',
   './src/views/tools.js',
+  './fonts/archivo-var.woff2',
   './icons/icon-180.png',
   './icons/icon-192.png',
   './icons/icon-512.png',

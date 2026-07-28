@@ -25,21 +25,22 @@ function planCard({ store, plan, isActive, onUse, onEdit, onDuplicate, onDelete 
 
   return el(
     "section",
-    { class: `plan-card${isActive ? " active" : ""}` },
+    { class: `card${isActive ? " card--active" : ""}` },
     el(
       "div",
-      { class: "ex-head" },
-      el("h2", { class: "ex-name", text: displayName(plan) || t("plans.untitled") }),
+      { class: "card-head" },
+      el("h3", { class: "card-title", text: displayName(plan) || t("plans.untitled") }),
       isActive ? el("span", { class: "badge", text: t("plans.inUse") }) : null,
     ),
-    el("div", { class: "plan-summary", text: summaryText(store, plan) }),
+    el("p", { class: "note", text: summaryText(store, plan) }),
+    // Four actions never fit two columns on a phone, so this row wraps instead.
     el(
       "div",
-      { class: "tools-row" },
-      isActive ? null : action("plans.use", "btn accent", onUse),
+      { class: "actions actions--wrap" },
+      isActive ? null : action("plans.use", "btn btn--primary", onUse),
       action("plans.edit", "btn", onEdit),
       action("plans.duplicate", "btn", onDuplicate),
-      action("plans.remove", "btn danger", onDelete),
+      action("plans.remove", "btn btn--danger", onDelete),
     ),
   );
 }
@@ -59,7 +60,7 @@ export function renderPlansView({
   onBack,
 }) {
   return fragment(
-    el("p", { class: "day-title", text: t("plans.title") }),
+    el("h2", { class: "screen-title", tabIndex: -1, text: t("plans.title") }),
     store.plans.map((plan) =>
       planCard({
         store,
@@ -73,10 +74,10 @@ export function renderPlansView({
     ),
     el(
       "div",
-      { class: "tools-row spread" },
+      { class: "actions clear-wrap" },
       el("button", {
         type: "button",
-        class: "btn accent",
+        class: "btn btn--primary",
         text: t("plans.create"),
         on: { click: onCreate },
       }),

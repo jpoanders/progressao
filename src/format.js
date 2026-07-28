@@ -21,14 +21,24 @@ export function parseNumber(raw) {
 }
 
 /**
+ * The value as it will be displayed, still a number: integer fields (reps) round to whole
+ * numbers, the rest keep one decimal. Returns null when there is nothing to show.
+ *
+ * Split out of formatNumber because plural selection needs a real number — t() only picks
+ * a plural form when params.n is one — while display needs the string.
+ */
+export function roundNumber(value, { integer = false } = {}) {
+  if (value == null || !Number.isFinite(value)) return null;
+  return integer ? Math.round(value) : Math.round(value * 10) / 10;
+}
+
+/**
  * Formats a stored number for display, avoiding float artifacts.
- * Integer fields (reps, cycles) round to whole numbers; the rest keep one decimal.
  * Returns "" for missing values so it can be assigned straight to an input value.
  */
-export function formatNumber(value, { integer = false } = {}) {
-  if (value == null || !Number.isFinite(value)) return "";
-  if (integer) return String(Math.round(value));
-  return String(Math.round(value * 10) / 10);
+export function formatNumber(value, options = {}) {
+  const rounded = roundNumber(value, options);
+  return rounded == null ? "" : String(rounded);
 }
 
 /** Date + time of the last backup, in the active locale. */

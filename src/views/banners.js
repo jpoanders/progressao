@@ -37,7 +37,8 @@ export function updateBanners({ elements, store, now = Date.now() }) {
 
   elements.backupTitle.textContent = t("banner.backupTitle");
   elements.backupBody.textContent = t("banner.backupBody");
-  elements.backupNow.textContent = t("banner.backupAction");
+  // Same action as the Backup section below, so it carries the same name.
+  elements.backupNow.textContent = t("tools.export");
   elements.backupDismiss.setAttribute("aria-label", t("banner.dismissAria"));
 
   elements.installTitle.textContent = t("banner.installTitle");

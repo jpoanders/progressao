@@ -1,38 +1,87 @@
-/* Progression — mobile-first single-column layout, no framework. */
+/*
+ * Progression — mobile-first single column, no framework.
+ *
+ * The direction: near-monochrome graphite, and colour spent in exactly one place — the
+ * gain badge that appears when a set beats the one it is chasing. Primary buttons are a
+ * solid ink fill rather than a coloured one, and --focus is only ever an outline. If an
+ * accent ever shows up as a button fill or a gradient, that discipline has been lost.
+ *
+ * Sections: font · tokens · base · shell · type · controls · the set · cards · tools ·
+ * banners.
+ */
+
+/* ── Font ──────────────────────────────────────────────────────────────────────────── */
+
+/*
+ * Archivo, latin subset, width axis baked at 87.5% — the only width the design uses, and
+ * pinning it takes the file from 90 KB to 36 KB. The weight axis stays variable, so 400
+ * through 800 all come from this one file.
+ *
+ * No metrics-override fallback: every number sits inside a fixed grid cell, so a swap can
+ * change the glyphs but cannot reflow anything.
+ */
+@font-face {
+  font-family: "Archivo";
+  src: url("../fonts/archivo-var.woff2") format("woff2");
+  font-weight: 400 800;
+  font-stretch: 87.5%;
+  font-display: swap;
+  font-style: normal;
+}
+
+/* ── Tokens ────────────────────────────────────────────────────────────────────────── */
 
 :root {
-  --bg: #ffffff;
-  --surface: #f4f6f8;
-  --surface-2: #eaedf1;
-  --border: #d6dbe1;
-  --text: #111418;
-  --muted: #5b6672;
-  --accent: #1257d6;
-  --accent-text: #ffffff;
-  --danger: #b4231f;
-  --hint: #0a7d3c;
-  --header: #111418;
-  --header-text: #ffffff;
-  --radius: 12px;
+  color-scheme: light dark;
+
+  --paper: #edf0f1;   /* the page — a cool slate, deliberately neither white nor cream */
+  --raise: #ffffff;   /* the only bounded surfaces on the log screen: inputs */
+  --ink: #16191c;     /* text, today's numbers, primary button fill */
+  --ghost: #5f686f;   /* last week's numbers, eyebrows, and every meaningful boundary */
+  --edge: #c6cdd3;    /* decorative hairlines only */
+  --gain: #8a5a00;    /* the delta. nothing else, ever */
+  --danger: #a32218;
+  --focus: #0f62d6;   /* outline only, never a fill */
+  --on-ink: #edf0f1;  /* text on a solid ink fill */
+
+  /* Space scale. */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+
+  --radius: 10px;
   --tap: 44px;
+
+  /* Set-row geometry, shared by the column headings, the ghost row and the inputs. */
+  --set-lead: 26px;
+  --set-sep: 14px;
+  --set-trail: 66px;
+  --set-cols: var(--set-lead) minmax(0, 1fr) var(--set-sep) minmax(0, 1fr) var(--set-trail);
 }
 
+/*
+ * Dark is a separate reading of the same system, not an inversion: --ghost lightens
+ * (it still has to clear 4.5:1 as text) and --gain moves to plate yellow, which reads
+ * here and would die on the light paper.
+ */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #14171b;
-    --surface: #1d2126;
-    --surface-2: #262b31;
-    --border: #333a42;
-    --text: #f2f4f7;
-    --muted: #9aa4af;
-    --accent: #5a9bff;
-    --accent-text: #0a0d10;
-    --danger: #ff7a72;
-    --hint: #56d38a;
-    --header: #0d1013;
-    --header-text: #f2f4f7;
+    --paper: #1b2025;
+    --raise: #252c33;
+    --ink: #edf1f4;
+    --ghost: #8c97a1;
+    --edge: #38414a;
+    --gain: #ffc53d;
+    --danger: #ff8078;
+    --focus: #6ba4ff;
+    --on-ink: #1b2025;
   }
 }
+
+/* ── Base ──────────────────────────────────────────────────────────────────────────── */
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -40,11 +89,23 @@ html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--paper);
+  color: var(--ink);
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
 }
+
+/* One focus treatment for everything. :focus-visible only — a plain :focus outline fires
+   on every tap on the target platform, which is all of them. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.hidden { display: none !important; }
+
+/* ── Shell ─────────────────────────────────────────────────────────────────────────── */
 
 .app { max-width: 640px; margin: 0 auto; }
 
@@ -52,269 +113,421 @@ header {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: var(--header);
-  color: var(--header-text);
-  padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
-  padding-left: max(16px, env(safe-area-inset-left));
-  padding-right: max(16px, env(safe-area-inset-right));
+  background: var(--paper);
+  border-bottom: 1px solid var(--edge);
+  padding: calc(env(safe-area-inset-top) + var(--s3)) var(--s4) var(--s3);
+  padding-left: max(var(--s4), env(safe-area-inset-left));
+  padding-right: max(var(--s4), env(safe-area-inset-right));
 }
 
-.title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.title-row h1 { font-size: 20px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
-.title-row .sub { font-size: 13px; color: #aeb6c0; }
+.title-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); }
 
-/* Week / day selectors */
-.selectors { margin-top: 12px; display: grid; gap: 8px; }
-.seg { display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
-.seg::-webkit-scrollbar { display: none; }
-.seg-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #aeb6c0; margin-bottom: 2px; }
+.title-row h1 {
+  font-family: "Archivo", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin: 0;
+}
 
-.chip {
-  flex: 0 0 auto;
-  min-height: var(--tap);
-  min-width: var(--tap);
-  padding: 0 14px;
-  border: 1px solid #3a424c;
-  background: transparent;
-  color: var(--header-text);
-  border-radius: 999px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.chip[aria-pressed="true"] {
-  background: var(--header-text);
-  color: var(--header);
-  border-color: var(--header-text);
-}
+.title-row .sub { font-size: 13px; color: var(--ghost); }
 
 main {
-  padding: 16px;
-  padding-left: max(16px, env(safe-area-inset-left));
-  padding-right: max(16px, env(safe-area-inset-right));
+  padding: var(--s5) var(--s4);
+  padding-left: max(var(--s4), env(safe-area-inset-left));
+  padding-right: max(var(--s4), env(safe-area-inset-right));
   padding-bottom: calc(env(safe-area-inset-bottom) + 96px);
 }
 
-.day-title { font-size: 15px; color: var(--muted); margin: 4px 0 14px; }
-
-/* Exercise card */
-.exercise {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px;
-  margin-bottom: 14px;
-}
-.ex-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 10px; }
-.ex-name { font-size: 17px; font-weight: 700; margin: 0; }
-.ex-scheme { font-size: 13px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-
-.sets { display: grid; gap: 8px; }
-.set-row {
-  display: grid;
-  grid-template-columns: 34px 1fr 1fr auto;
-  gap: 8px;
-  align-items: center;
-}
-.set-n { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: center; }
-
-.field { display: flex; flex-direction: column; }
-.field label { font-size: 11px; color: var(--muted); margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.04em; }
-
-input[type="text"] {
-  width: 100%;
-  min-height: var(--tap);
-  font-size: 16px; /* >=16px prevents iOS auto-zoom on focus */
-  padding: 8px 4px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg);
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
+footer {
   text-align: center;
-}
-input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-
-/* "Target to beat" hint + copy button */
-.prev {
-  grid-column: 2 / 4;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  color: var(--ghost);
   font-size: 12px;
-  color: var(--hint);
-  font-variant-numeric: tabular-nums;
-  margin-top: -2px;
+  padding: var(--s2) var(--s4) calc(env(safe-area-inset-bottom) + var(--s4));
 }
-.prev.empty { color: var(--muted); opacity: 0.7; }
 
-.copy-btn {
-  grid-column: 4;
-  min-width: var(--tap);
-  min-height: var(--tap);
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text);
-  border-radius: 10px;
-  font-size: 12px;
+/* ── Type ──────────────────────────────────────────────────────────────────────────── */
+
+/* One rule for every uppercase micro-label in the app — column headings, section titles,
+   the week/day legends. Previously this was four near-identical declarations. */
+.eyebrow {
+  font-family: "Archivo", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 11px;
   font-weight: 600;
-  cursor: pointer;
-  padding: 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ghost);
 }
-.copy-btn:disabled { opacity: 0.35; cursor: default; }
 
-.ex-actions { margin-top: 12px; }
-.set-stepper { display: flex; align-items: center; gap: 12px; }
-.step-label { font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 64px; text-align: center; }
+/* The one <h2> on each screen, and the focus target when the screen changes. */
+.screen-title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 var(--s5);
+}
+.screen-title:focus { outline: none; }
+
+/* Shared on purpose by exercises and plan cards: both really are a titled item with a
+   value on the right. */
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.card-title {
+  font-family: "Archivo", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.card-meta {
+  font-family: "Archivo", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ghost);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Every muted secondary line: plan summaries, backup notes, empty states. */
+.note {
+  font-size: 13px;
+  color: var(--ghost);
+  margin: 0;
+}
+
+/* ── Controls ──────────────────────────────────────────────────────────────────────── */
 
 .btn {
   min-height: var(--tap);
-  padding: 0 16px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text);
+  padding: 0 var(--s4);
+  border-radius: var(--radius);
+  border: 1px solid var(--ghost);
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
 }
-.btn.full { width: 100%; }
-.btn.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
-.btn.accent { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-.btn.step {
-  min-width: 44px;
+.btn:disabled { opacity: 0.35; cursor: default; }
+
+.btn--primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.btn--danger { color: var(--danger); border-color: var(--danger); }
+.btn--full { width: 100%; }
+
+.btn--icon {
+  min-width: var(--tap);
   padding: 0;
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1;
   font-weight: 700;
 }
-.btn.step:disabled { opacity: 0.35; cursor: default; }
 
-.empty-note { color: var(--muted); font-size: 14px; margin: 0 0 14px; }
-
-/* Plan library */
-.plan-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px;
-  margin-bottom: 14px;
+/*
+ * Action rows. One class — this replaces a global two-column grid that a descendant
+ * selector then had to fight back to flex.
+ *
+ * auto-fit rather than a breakpoint: two buttons sit side by side only where both labels
+ * actually fit on one line, and stack otherwise. A fixed breakpoint cannot know that,
+ * because the labels are translated — "Restore a backup" is "Restaurar um backup".
+ */
+.actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+  gap: var(--s2);
 }
-.plan-card.active { border-color: var(--accent); }
-.plan-summary { font-size: 13px; color: var(--muted); margin: 6px 0 12px; }
-.badge {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--accent-text);
-  background: var(--accent);
+.actions--wrap { display: flex; flex-wrap: wrap; }
+.actions--wrap .btn { flex: 1 1 auto; }
+
+/* Week / day chips in the header. */
+.selectors { margin-top: var(--s3); display: grid; gap: var(--s3); }
+.seg { display: flex; gap: var(--s2); overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+.seg::-webkit-scrollbar { display: none; }
+.seg-legend { margin-bottom: var(--s1); }
+
+.chip {
+  flex: 0 0 auto;
+  min-height: 38px;
+  min-width: 38px;
+  padding: 0 var(--s3);
+  border: 1px solid var(--edge);
+  background: transparent;
+  color: var(--ghost);
   border-radius: 999px;
-  padding: 3px 8px;
-  white-space: nowrap;
+  font-family: "Archivo", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
 }
-/* Four actions never fit two columns on a phone, so this row wraps instead. */
-.plan-card .tools-row { display: flex; flex-wrap: wrap; }
-.plan-card .tools-row .btn { flex: 1 1 auto; }
-.tools-row.spread { margin-top: 18px; }
-
-/* Plan editor */
-.editor-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.editor-head .day-title { margin: 4px 0; }
-.editor-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.chip[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--on-ink);
+  border-color: var(--ink);
+}
 
 .text-input {
   width: 100%;
   min-height: var(--tap);
+  font-family: inherit;
   font-size: 16px; /* >=16px prevents iOS auto-zoom on focus */
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg);
-  color: var(--text);
-  text-align: left;
-}
-
-.day-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--ghost);
   border-radius: var(--radius);
-  padding: 14px;
-  margin-bottom: 14px;
-  display: grid;
-  gap: 10px;
+  background: var(--raise);
+  color: var(--ink);
 }
-.day-head { display: flex; align-items: center; gap: 8px; }
-.day-head .text-input { flex: 1; }
-.row-actions { display: flex; gap: 6px; }
-
-.slot-row {
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
-  display: grid;
-  gap: 8px;
-}
-.slot-name { font-size: 15px; font-weight: 600; }
-.slot-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
-.rep-range { display: flex; align-items: center; gap: 6px; }
-.rep-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-.rep-input { width: 56px; padding: 8px 4px; text-align: center; font-variant-numeric: tabular-nums; }
-.rep-dash { color: var(--muted); }
-
-.add-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
-
-/* Backup / settings */
-.tools { margin-top: 20px; display: grid; gap: 10px; }
-.tools-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
-.tools-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.tools-note { font-size: 12px; color: var(--muted); }
 
 .select {
   width: 100%;
   min-height: var(--tap);
-  padding: 0 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text);
+  padding: 0 var(--s3);
+  border-radius: var(--radius);
+  border: 1px solid var(--ghost);
+  background: var(--raise);
+  color: var(--ink);
   font-size: 16px; /* >=16px prevents iOS auto-zoom on focus */
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
 }
 
-.clear-wrap { margin-top: 8px; }
+/* numericField's wrapper — it only has to fill its grid cell. */
+.field { display: grid; }
 
-/* Banners */
-.banner {
-  display: flex;
+.stepper { display: flex; align-items: center; gap: var(--s3); }
+.stepper-label {
+  font-size: 14px;
+  color: var(--ghost);
+  font-variant-numeric: tabular-nums;
+  min-width: 64px;
+  text-align: center;
+}
+
+/* ── The set ───────────────────────────────────────────────────────────────────────── */
+
+/*
+ * The signature of the app: last week's numbers sit directly above today's, in the same
+ * tabular column, so beating them is a matter of reading down one line.
+ *
+ * The two rows are separate grids sharing one template (--set-cols, set per exercise in
+ * views/day.js from the field count). Identical templates on equal-width siblings line up
+ * without subgrid, which is iOS 16+.
+ */
+.exercise {
+  border-top: 1px solid var(--edge);
+  padding-top: var(--s4);
+  margin-bottom: var(--s6);
+}
+.exercise:first-of-type { border-top: none; padding-top: 0; }
+
+/* Column headings, once per exercise rather than a label on every box. */
+.set-head {
+  display: grid;
+  grid-template-columns: var(--set-cols);
+  gap: var(--s2);
+  align-items: end;
+  margin-bottom: var(--s1);
+}
+.set-head .eyebrow { text-align: center; }
+
+.sets { display: grid; gap: var(--s4); }
+.set { display: grid; gap: 2px; }
+
+/* Last week, and the control that pulls it in. */
+.set-ghost {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--set-cols);
+  gap: var(--s2);
   align-items: center;
-  gap: 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  width: 100%;
+  min-height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ghost);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+/* Visually 32px so two sets still fit the thumb's reach; 44px to actually hit. */
+.set-ghost::after { content: ""; position: absolute; inset: -6px 0; }
+.set-ghost:disabled { cursor: default; }
+.set-ghost:disabled::after { content: none; }
+
+.set-n {
+  font-family: "Archivo", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ghost);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.ghost-val {
+  font-family: "Archivo", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ghost);
+}
+
+.pair { color: var(--ghost); font-size: 14px; }
+
+.ghost-week {
+  font-family: "Archivo", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ghost);
+  text-align: right;
+}
+
+/* Today. */
+.set-inputs {
+  display: grid;
+  grid-template-columns: var(--set-cols);
+  gap: var(--s2);
+  align-items: center;
+}
+
+.set-inputs input {
+  width: 100%;
+  min-height: 54px;
+  font-family: "Archivo", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  padding: 0 var(--s1);
+  border: 1px solid var(--ghost);
   border-radius: var(--radius);
-  padding: 12px 14px;
-  margin: 0 16px 14px;
+  background: var(--raise);
+  color: var(--ink);
+}
+
+/* The only colour on the screen, and only when you went up. */
+.gain {
+  font-family: "Archivo", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--gain);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Added by the view only when the badge goes from absent to present, so the one animation
+   in the app marks the moment you pass last week rather than every keystroke after it. */
+.gain--in { animation: gain-in 140ms ease-out; }
+
+@keyframes gain-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gain--in { animation: none; }
+}
+
+.ex-actions { margin-top: var(--s4); }
+
+/* ── Cards ─────────────────────────────────────────────────────────────────────────── */
+
+/* Plans and editor days keep a surface: a library is a list of discrete objects, while a
+   training session is one continuous thing. */
+.card {
+  background: var(--raise);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: var(--s4);
+  margin-bottom: var(--s3);
+}
+.card--active { border-color: var(--ink); }
+.card--day { display: grid; gap: var(--s3); }
+
+.badge {
+  font-family: "Archivo", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--on-ink);
+  background: var(--ink);
+  border-radius: 999px;
+  padding: 3px var(--s2);
+  white-space: nowrap;
+}
+
+.card .note { margin-bottom: var(--s3); }
+
+/* Plan editor. */
+.editor-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+.editor-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+
+.day-head { display: flex; align-items: center; gap: var(--s2); }
+.day-head .text-input { flex: 1; }
+.row-actions { display: flex; gap: var(--s1); }
+
+.slot-row {
+  border-top: 1px solid var(--edge);
+  padding-top: var(--s3);
+  display: grid;
+  gap: var(--s2);
+}
+.slot-name { font-size: 15px; font-weight: 600; }
+.slot-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s3); }
+
+.rep-range { display: flex; align-items: center; gap: var(--s1); }
+.rep-input { width: 56px; padding: var(--s2) var(--s1); text-align: center; font-variant-numeric: tabular-nums; }
+.rep-dash { color: var(--ghost); }
+
+.add-row { display: grid; grid-template-columns: 1fr auto; gap: var(--s2); align-items: center; }
+
+/* ── Tools ─────────────────────────────────────────────────────────────────────────── */
+
+.tools { margin-top: var(--s5); display: grid; gap: var(--s2); }
+.tools .actions { margin-top: var(--s1); }
+
+.clear-wrap { margin-top: var(--s5); }
+
+/* ── Banners ───────────────────────────────────────────────────────────────────────── */
+
+/* Grid rather than a flex row: at 320px a flex row squeezes the text into a sliver to
+   make room for the button, so the action gets a line of its own instead. */
+.banner {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: var(--s3);
+  background: var(--raise);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: var(--s3) var(--s4);
+  margin: 0 var(--s4) var(--s3);
   font-size: 14px;
 }
-.banner .grow { flex: 1; }
+.banner .grow { grid-column: 1; grid-row: 1; }
+.banner .x { grid-column: 2; grid-row: 1; }
+.banner .act { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
 .banner strong { display: block; }
 .banner .x {
   min-width: 40px;
   min-height: 40px;
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: var(--ghost);
   font-size: 20px;
   cursor: pointer;
   line-height: 1;
 }
-.banner .act { min-height: 40px; padding: 0 12px; }
-
-.hidden { display: none !important; }
-
-footer {
-  text-align: center;
-  color: var(--muted);
-  font-size: 12px;
-  padding: 6px 16px calc(env(safe-area-inset-bottom) + 16px);
-}
+.banner .act { min-height: 40px; padding: 0 var(--s3); }

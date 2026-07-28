@@ -8,21 +8,17 @@ function planSection({ plan, onManagePlans }) {
   return el(
     "div",
     { class: "tools" },
-    el("div", { class: "tools-title", text: t("plans.title") }),
-    el("div", {
-      class: "tools-note",
+    el("div", { class: "eyebrow", text: t("plans.title") }),
+    el("p", {
+      class: "note",
       text: displayName(plan) || t("plans.untitled"),
     }),
-    el(
-      "div",
-      { class: "tools-row" },
-      el("button", {
-        type: "button",
-        class: "btn",
-        text: t("plans.manage"),
-        on: { click: onManagePlans },
-      }),
-    ),
+    el("button", {
+      type: "button",
+      class: "btn btn--full",
+      text: t("plans.manage"),
+      on: { click: onManagePlans },
+    }),
   );
 }
 
@@ -32,13 +28,13 @@ function backupSection({ store, onExport, onImport }) {
   return el(
     "div",
     { class: "tools" },
-    el("div", { class: "tools-title", text: t("tools.title") }),
+    el("div", { class: "eyebrow", text: t("tools.title") }),
     el(
       "div",
-      { class: "tools-row" },
+      { class: "actions" },
       el("button", {
         type: "button",
-        class: "btn accent",
+        class: "btn btn--primary",
         text: t("tools.export"),
         on: { click: onExport },
       }),
@@ -49,9 +45,11 @@ function backupSection({ store, onExport, onImport }) {
         on: { click: onImport },
       }),
     ),
+    // Says what restoring costs before the tap, not only in the confirm that follows it.
+    el("p", { class: "note", text: t("tools.note") }),
     lastExport
-      ? el("div", {
-          class: "tools-note",
+      ? el("p", {
+          class: "note",
           text: t("tools.lastBackup", { when: formatDateTime(lastExport, activeLocale()) }),
         })
       : null,
@@ -75,7 +73,7 @@ function settingsSection({ onLocaleChange }) {
   return el(
     "div",
     { class: "tools" },
-    el("div", { class: "tools-title", text: t("settings.title") }),
+    el("div", { class: "eyebrow", text: t("settings.title") }),
     select,
   );
 }

@@ -178,13 +178,13 @@ about 7 days without visiting the site**. Two defences:
 
 At the bottom of any screen there is a **Backup** section:
 
-- **Export JSON** — downloads `progression-backup-YYYY-MM-DD.json` containing 100% of your
+- **Back up now** — downloads `progression-backup-YYYY-MM-DD.json` containing 100% of your
   progress. Keep it wherever you like (email it to yourself, iCloud Drive, Google Drive…).
-- **Import JSON** — pick an exported backup to **restore everything**. Importing replaces
+- **Restore a backup** — pick a backup file to **restore everything**. Restoring replaces
   current progress (it asks for confirmation first). Backups exported by older versions of
-  the app still import: the file format has not changed.
+  the app still restore: the file format has not changed.
 
-Tip: export after important sessions, and before switching devices or clearing your browser.
+Tip: back up after important sessions, and before switching devices or clearing your browser.
 
 ---
 
@@ -194,16 +194,17 @@ Tip: export after important sessions, and before switching devices or clearing y
    6-week, 3-day plan shows six week chips and three day chips.
 2. For each exercise, fill in **kg** and **reps** per set. It saves itself. Cardio
    exercises log **km** and **min** instead.
-3. Under each set you see the **target to beat** — your most recent record for that same
-   exercise and set (ideally last week). Tap **copy** to pull the previous values in, then
-   beat them.
+3. Directly above each set sits the **target to beat** — your most recent record for that
+   same exercise and set (ideally last week), in the same column as the boxes you type in,
+   so you can read straight down. Tap it to pull those values in, then beat them. When what
+   you log goes past it, the set shows how far by (`+2.5 kg`, `+1 rep`).
 4. **Adjustable sets:** use `−` / `+` at the bottom of each exercise card to remove or add
    sets (limits 1 to 8). It starts at the plan's value, and the adjustment applies **per
    week** (W1 can have 4 sets while W2 stays at 3). Removing a set that holds data asks for
    confirmation. The `3×6-8` beside the name remains the **prescribed** rep range for
    reference — the actual count is shown by the set stepper.
-5. **Clear this day** erases the current day/week's records and returns the set counts to
-   the plan default (with confirmation).
+5. **Clear this day's log** erases the current day/week's records and returns the set counts
+   to the plan default (with confirmation).
 6. **Settings**, at the bottom, switches the interface language.
 
 ## Building a plan

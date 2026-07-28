@@ -11,7 +11,16 @@ import { formatNumber, parseNumber } from "../format.js";
  * `type="text"` with inputMode="decimal" rather than type="number": it keeps the phone's
  * numeric keypad while letting parseNumber accept commas and ignore stray characters.
  */
-export function numericField({ label, placeholder, ariaLabel, integer = false, read, write }) {
+export function numericField({
+  label,
+  placeholder,
+  ariaLabel,
+  describedBy,
+  integer = false,
+  read,
+  write,
+  onChange,
+}) {
   const show = () => formatNumber(read(), { integer });
 
   const input = el("input", {
@@ -20,9 +29,15 @@ export function numericField({ label, placeholder, ariaLabel, integer = false, r
     autocomplete: "off",
     placeholder,
     "aria-label": ariaLabel,
+    "aria-describedby": describedBy,
     value: show(),
     on: {
-      input: () => write(parseNumber(input.value)),
+      input: () => {
+        write(parseNumber(input.value));
+        // Lets the caller react to the new value without a render(), which would take the
+        // keyboard away mid-word.
+        onChange?.();
+      },
       blur: () => {
         input.value = show();
       },
@@ -34,9 +49,10 @@ export function numericField({ label, placeholder, ariaLabel, integer = false, r
   return {
     wrap,
     input,
-    /** Refresh the displayed value after a programmatic write (the copy buttons). */
+    /** Refresh the displayed value after a programmatic write (the ghost row). */
     sync: () => {
       input.value = show();
+      onChange?.();
     },
   };
 }

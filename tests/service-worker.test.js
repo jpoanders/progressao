@@ -12,7 +12,7 @@ const root = new URL("../", import.meta.url);
 const serviceWorker = readFileSync(new URL("sw.js", root), "utf8");
 
 /** Directories whose contents the browser downloads. */
-const SHIPPED_DIRS = ["src", "styles", "icons"];
+const SHIPPED_DIRS = ["src", "styles", "icons", "fonts"];
 /** Root files the browser downloads. sw.js is fetched by the browser, not from cache. */
 const SHIPPED_ROOT_FILES = ["index.html", "manifest.webmanifest"];
 
@@ -57,6 +57,6 @@ describe("service worker precache", () => {
   it("has a cache version to bust the old cache with", () => {
     const version = serviceWorker.match(/const CACHE_VERSION = '([^']+)'/);
     assert.ok(version, "sw.js must declare CACHE_VERSION");
-    assert.notEqual(version[1], 'progression-v4', "bump the version when shipped files change");
+    assert.notEqual(version[1], 'progression-v5', "bump the version when shipped files change");
   });
 });

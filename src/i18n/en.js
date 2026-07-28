@@ -44,26 +44,47 @@ export default {
     exercise: {
       scheme: "{sets}×{min}-{max}",
       setCount: { one: "{n} set", other: "{n} sets" },
-      copy: "copy",
-      copyAria: "Copy previous values for set {set}",
-      previousStrength: "↳ last time (W{week}): {kg} × {reps}",
-      previousCardio: "↳ last time (W{week}): {dist} · {time}",
-      previousEmpty: "↳ no previous record",
+      // Column headings above the sets. Separate from fields.*.placeholder, which is now
+      // empty: the heading labels the column once instead of every box repeating itself.
+      columns: {
+        kg: "kg",
+        reps: "reps",
+        dist: "km",
+        time: "min",
+      },
+      // The glyph between the two logged values. Not language, but it sits in the view, so
+      // it goes through t() like everything else there.
+      pair: {
+        strength: "×",
+        cardio: "·",
+      },
+      weekTag: "w{n}",
+      useLastStrength: "Use week {week}: {kg} × {reps}, set {set}",
+      useLastCardio: "Use week {week}: {dist} · {time}, set {set}",
+      previousEmpty: "No record yet for set {set}",
+      // All three take {n} — the plural entry needs that name, and one name keeps the
+      // caller from having to know which field it is looking up.
+      gain: {
+        kg: "+{n} kg",
+        dist: "+{n} km",
+        reps: { one: "+{n} rep", other: "+{n} reps" },
+      },
       addSetAria: "Add a set to {exercise}",
       removeSetAria: "Remove a set from {exercise}",
       removeSetConfirm:
         "Set {set} of “{exercise}” has data that will be deleted. Remove it anyway?",
       fields: {
-        kg: { placeholder: "kg", aria: "weight, set {set}" },
-        reps: { placeholder: "reps", aria: "reps, set {set}" },
-        dist: { placeholder: "km", aria: "distance, set {set}" },
-        time: { placeholder: "min", aria: "time, set {set}" },
+        kg: { placeholder: "", aria: "weight, set {set}" },
+        reps: { placeholder: "", aria: "reps, set {set}" },
+        dist: { placeholder: "", aria: "distance, set {set}" },
+        time: { placeholder: "", aria: "time, set {set}" },
       },
     },
 
     day: {
-      empty: "This day has no exercises yet. Add some in the plan editor.",
-      clear: "Clear this day (Week {week})",
+      empty: "No exercises on this day yet.",
+      emptyAction: "Edit this plan",
+      clear: "Clear this day's log",
       clearEmpty: "This day is already empty.",
       clearConfirm: {
         one: "Clear Week {week}, {day}? This deletes {n} record and resets the sets to the plan default. This cannot be undone.",
@@ -163,8 +184,9 @@ export default {
 
     tools: {
       title: "Backup",
-      export: "Export JSON",
-      import: "Import JSON",
+      export: "Back up now",
+      import: "Restore a backup",
+      note: "Restoring replaces everything on this device.",
       lastBackup: "Last backup: {when}",
       importConfirm: "Importing will REPLACE all current progress and plans. Continue?",
       importDone: "Progress imported successfully.",
@@ -179,8 +201,7 @@ export default {
 
     banner: {
       backupTitle: "Back up your data",
-      backupBody: "Export your progress as JSON every now and then.",
-      backupAction: "Export",
+      backupBody: "Everything is stored on this device only. Keep a copy somewhere safe.",
       dismissAria: "Dismiss",
       installTitle: "Add to Home Screen",
       installBody:
