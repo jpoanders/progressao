@@ -57,22 +57,20 @@ const WEEK = 7 * DAY;
 const MONTH = 30 * DAY;
 
 /**
- * How long ago a record was logged, for the ghost row's tag ("3w ago").
+ * How long ago a record was logged ("3w ago", or "3 weeks ago" when `style` is widened).
  *
- * Narrow style deliberately: the tag shares a 66px column with the week tag it replaces,
- * and a wider string would steal room from the inputs below it. Records written before the
- * `at` field existed have no timestamp and get no tag rather than a wrong one.
+ * Narrow by default because the caller it was written for — the ghost row's tag — shares a
+ * 66px column with the week tag it replaces, and a wider string would steal room from the
+ * inputs below it. Callers with a whole line to spend pass "long" instead. Records written
+ * before the `at` field existed have no timestamp and get nothing rather than a wrong date.
  */
-export function formatAge(timestamp, localeTag, now = Date.now()) {
+export function formatAge(timestamp, localeTag, now = Date.now(), style = "narrow") {
   if (!Number.isFinite(timestamp)) return "";
 
   const elapsed = now - timestamp;
   if (elapsed < 0) return "";
 
-  const relative = new Intl.RelativeTimeFormat(localeTag, {
-    numeric: "always",
-    style: "narrow",
-  });
+  const relative = new Intl.RelativeTimeFormat(localeTag, { numeric: "always", style });
 
   if (elapsed < HOUR) return relative.format(-Math.floor(elapsed / MINUTE), "minute");
   if (elapsed < DAY) return relative.format(-Math.floor(elapsed / HOUR), "hour");

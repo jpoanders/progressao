@@ -76,6 +76,7 @@ export default {
       empty: "Nenhum exercício neste dia ainda.",
       emptyAction: "Editar este plano",
       clear: "Limpar o registro deste dia",
+      lastLogged: "Registrado {when}",
       clearEmpty: "Este dia já está vazio.",
       clearConfirm: {
         one: "Limpar a Semana {week}, {day}? Apaga {n} registro e volta as séries ao padrão. Não dá para desfazer.",
