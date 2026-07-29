@@ -57,6 +57,7 @@ export function renderPlansView({
   onDuplicate,
   onDelete,
   onCreate,
+  onManageExercises,
   onBack,
 }) {
   return fragment(
@@ -81,6 +82,15 @@ export function renderPlansView({
         class: "btn btn--primary",
         text: t("plans.create"),
         on: { click: onCreate },
+      }),
+      // Plans is the landing screen and the only one reachable with nothing selected, so it
+      // has to be a way into the exercise library too — the Tools entry point only exists on
+      // the log screen, which a fresh install cannot reach yet.
+      el("button", {
+        type: "button",
+        class: "btn",
+        text: t("exercises.manage"),
+        on: { click: onManageExercises },
       }),
       onBack
         ? el("button", {

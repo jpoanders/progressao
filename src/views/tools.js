@@ -22,6 +22,22 @@ function planSection({ plan, onManagePlans }) {
   );
 }
 
+/** The way into the user's own exercises, next to the way into their plans. */
+function exercisesSection({ onManageExercises }) {
+  return el(
+    "div",
+    { class: "tools" },
+    el("div", { class: "eyebrow", text: t("exercises.title") }),
+    el("p", { class: "note", text: t("exercises.toolsNote") }),
+    el("button", {
+      type: "button",
+      class: "btn btn--full",
+      text: t("exercises.manage"),
+      on: { click: onManageExercises },
+    }),
+  );
+}
+
 function backupSection({ store, onExport, onImport }) {
   const lastExport = store.state.lastExport;
 
@@ -79,9 +95,18 @@ function settingsSection({ onLocaleChange }) {
 }
 
 /** Plan, backup and settings, shown at the bottom of the training view. */
-export function renderTools({ store, plan, onManagePlans, onExport, onImport, onLocaleChange }) {
+export function renderTools({
+  store,
+  plan,
+  onManagePlans,
+  onManageExercises,
+  onExport,
+  onImport,
+  onLocaleChange,
+}) {
   return fragment(
     planSection({ plan, onManagePlans }),
+    exercisesSection({ onManageExercises }),
     backupSection({ store, onExport, onImport }),
     settingsSection({ onLocaleChange }),
   );

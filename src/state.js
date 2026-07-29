@@ -7,6 +7,7 @@
  *   {
  *     version: 3,
  *     lastExport: number | null,          // epoch ms of the last JSON export
+ *     exercises: [Exercise],              // the user's own exercises — see src/catalog.js
  *     plans:     [Plan],                  // the user's plans — see src/plan.js
  *     entries:   { "<planId>|<week>|<slotId>|<setIndex>": { kg, reps, at? } | { dist, time, at? } },
  *     setCounts: { "<planId>|<week>|<slotId>": number }   // only when != the plan's
@@ -15,8 +16,11 @@
  * localStorage["progression:ui"]  UI preferences (disposable; losing it loses nothing)
  *   { planId, week, day, locale, backupDismissedAt, installDismissed }
  *
- * Plans live in the log rather than in preferences for one reason: they are user data, so
- * they belong in the backup file. Preferences only remember *where you were*.
+ * Plans and exercises live in the log rather than in preferences for one reason: they are
+ * user data, so they belong in the backup file. Preferences only remember *where you were*.
+ *
+ * `exercises` is read before `plans` on every load, and that order is load-bearing: a slot
+ * naming an exercise the state does not list is dropped, and its records go with it.
  *
  * `at` is epoch ms of the last write to that record. It exists so records can be ordered
  * across plans, where week numbers are meaningless — see findPrevious. It is absent on
@@ -38,13 +42,20 @@
  * plan safe to reason about — what you see in the app is exactly what is stored.
  */
 
-import { ENTRY_FIELDS, entryFields } from "./catalog.js";
+import {
+  ENTRY_FIELDS,
+  makeLookup,
+  normalizeUserExercises,
+  setUserExercises,
+} from "./catalog.js";
 import {
   MAX_SETS,
   clampSets,
   findPlan,
   findSlot,
+  newId,
   normalizePlan,
+  planSlots,
   weeksOf,
 } from "./plan.js";
 
@@ -66,6 +77,7 @@ export function emptyState() {
   return {
     version: STATE_VERSION,
     lastExport: null,
+    exercises: [],
     plans: [],
     entries: {},
     setCounts: {},
@@ -117,13 +129,19 @@ function resolveKey(index, key, arity) {
  */
 const CLOCK_SKEW = 24 * 60 * 60_000;
 
-/** Keeps only the fields this exercise actually logs, and only if something is filled in. */
-function normalizeEntry(raw, slot, now) {
+/**
+ * Keeps only the fields this exercise actually logs, and only if something is filled in.
+ *
+ * `lookup` decides which fields those are, so it is passed in for the same reason
+ * normalizePlan takes one: getting it wrong here silently discards a cardio exercise's
+ * distance and time as fields it does not log.
+ */
+function normalizeEntry(raw, slot, now, lookup) {
   if (!isPlainObject(raw)) return null;
 
   const entry = {};
   let filled = false;
-  for (const field of entryFields(slot.exerciseId)) {
+  for (const field of lookup.fields(slot.exerciseId)) {
     entry[field] = asNumber(raw[field]);
     if (entry[field] != null) filled = true;
   }
@@ -137,8 +155,8 @@ function normalizeEntry(raw, slot, now) {
   return entry;
 }
 
-function normalizePlans(raw) {
-  const plans = (Array.isArray(raw) ? raw : []).map(normalizePlan);
+function normalizePlans(raw, lookup) {
+  const plans = (Array.isArray(raw) ? raw : []).map((plan) => normalizePlan(plan, lookup));
 
   // Two plans sharing an id would share every record keyed under it.
   const seen = new Set();
@@ -154,14 +172,20 @@ function normalizePlans(raw) {
 export function normalizeState(raw, now = Date.now()) {
   if (!isPlainObject(raw) || !isPlainObject(raw.entries)) return emptyState();
 
-  const plans = normalizePlans(raw.plans);
+  // Before the plans, and the order is the whole point: normalizeSlot drops a slot naming an
+  // exercise this lookup does not have, and the entries loop below then prunes its records.
+  // Repairing the list afterwards would delete every custom slot on the first load.
+  const exercises = normalizeUserExercises(raw.exercises);
+  const lookup = makeLookup(exercises);
+
+  const plans = normalizePlans(raw.plans, lookup);
   const index = planIndex(plans);
 
   const entries = {};
   for (const [key, value] of Object.entries(raw.entries)) {
     const resolved = resolveKey(index, key, 4);
     if (!resolved) continue;
-    const entry = normalizeEntry(value, resolved.slot, now);
+    const entry = normalizeEntry(value, resolved.slot, now, lookup);
     if (entry) entries[key] = entry;
   }
 
@@ -178,6 +202,7 @@ export function normalizeState(raw, now = Date.now()) {
   return {
     version: STATE_VERSION,
     lastExport: asNumber(raw.lastExport),
+    exercises,
     plans,
     entries,
     setCounts,
@@ -421,6 +446,27 @@ export function countPlanEntries(state, planId) {
 }
 
 /**
+ * What deleting one of the user's exercises would cost: every slot that places it, the plans
+ * those sit in, and the records logged on them. Counted across all weeks, because the slot is
+ * removed from the plan itself and not just from the week on screen.
+ */
+export function countExerciseUse(state, exerciseId) {
+  const plans = new Set();
+  let slots = 0;
+  let records = 0;
+
+  for (const plan of state.plans) {
+    for (const slot of planSlots(plan)) {
+      if (slot.exerciseId !== exerciseId) continue;
+      plans.add(plan.id);
+      slots += 1;
+      records += countSlotEntries(state, plan.id, null, slot.id);
+    }
+  }
+  return { slots, plans: plans.size, records };
+}
+
+/**
  * How many records a revised plan would discard: those whose slot or week it no longer
  * has. The plan editor asks this before saving so a destructive edit is never silent.
  */
@@ -455,6 +501,11 @@ export function createStore(storage = globalThis.localStorage, { now = () => Dat
   let state = normalizeState(readJSON(storage, STATE_KEY));
   let prefs = normalizePrefs(readJSON(storage, PREFS_KEY));
 
+  /** The lookup for the exercises this store holds — what its own plans are judged against. */
+  const stateLookup = () => makeLookup(state.exercises);
+
+  setUserExercises(state.exercises);
+
   function persist(key, value) {
     try {
       storage.setItem(key, JSON.stringify(value));
@@ -475,12 +526,16 @@ export function createStore(storage = globalThis.localStorage, { now = () => Dat
 
   const saveState = () => {
     exerciseIndex = null;
+    // The views resolve exercises through the registry, so it is refreshed here for the same
+    // reason the index is dropped here: every write funnels through this function, and a
+    // mutator added later cannot forget to do it.
+    setUserExercises(state.exercises);
     persist(STATE_KEY, state);
   };
   const savePrefs = () => persist(PREFS_KEY, prefs);
 
   function addPlan(plan) {
-    const normalized = normalizePlan(plan);
+    const normalized = normalizePlan(plan, stateLookup());
     state.plans = [...state.plans, normalized];
     saveState();
     return normalized;
@@ -560,9 +615,59 @@ export function createStore(storage = globalThis.localStorage, { now = () => Dat
 
     addPlan,
 
+    /**
+     * Adds one of the user's own exercises, or returns null when it has no usable name.
+     *
+     * The id carries a prefix no catalog slug does, so the two lists can never collide —
+     * tests/catalog.test.js holds the catalog to that.
+     */
+    addExercise({ name, group, kind }) {
+      const [exercise] = normalizeUserExercises([{ id: newId("u"), name, group, kind }]);
+      if (!exercise) return null;
+
+      state.exercises = [...state.exercises, exercise];
+      saveState();
+      return exercise;
+    },
+
+    /**
+     * Renames one. Records are keyed by slot, and a slot names its exercise by id, so this
+     * cannot orphan anything — which is why it does not go near the plans.
+     */
+    renameExercise(exerciseId, name) {
+      const trimmed = typeof name === "string" ? name.trim() : "";
+      const exercise = state.exercises.find((candidate) => candidate.id === exerciseId);
+      if (!exercise || trimmed === "") return false;
+
+      exercise.name = trimmed;
+      saveState();
+      return true;
+    },
+
+    /**
+     * Deletes one, along with every slot that placed it and every record on those slots.
+     *
+     * The cascade is not spelled out here: re-normalizing each plan against a lookup that no
+     * longer has the exercise drops exactly the slots that named it, and pruneRecords then
+     * uses the same predicate normalizeState does to decide which records are left homeless.
+     * countExerciseUse reports the cost beforehand, and agrees because it counts the same
+     * slots this removes.
+     */
+    deleteExercise(exerciseId) {
+      if (!state.exercises.some((candidate) => candidate.id === exerciseId)) return false;
+
+      state.exercises = state.exercises.filter((candidate) => candidate.id !== exerciseId);
+      const lookup = stateLookup();
+      state.plans = state.plans.map((plan) => normalizePlan(plan, lookup));
+      for (const plan of state.plans) pruneRecords(plan);
+
+      saveState();
+      return true;
+    },
+
     /** Replaces a plan in place, discarding records the revision has no room for. */
     updatePlan(plan) {
-      const normalized = normalizePlan(plan);
+      const normalized = normalizePlan(plan, stateLookup());
       const index = state.plans.findIndex((candidate) => candidate.id === normalized.id);
       if (index === -1) return addPlan(plan);
 

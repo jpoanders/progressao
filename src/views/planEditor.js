@@ -1,5 +1,5 @@
 import { el, fragment } from "../dom.js";
-import { byGroup } from "../catalog.js";
+import { byGroup, exerciseLabel, searchExercises } from "../catalog.js";
 import {
   MAX_DAYS,
   MAX_SETS,
@@ -160,41 +160,103 @@ function slotRow({ day, slot, index, onChange }) {
   );
 }
 
-/** The catalog picker: a grouped select plus the button that commits the choice. */
-function addExerciseRow({ day, onChange }) {
-  const select = el(
-    "select",
-    { class: "select", "aria-label": t("planEditor.addExercise") },
-    byGroup().map(({ group, exercises }) =>
-      el(
-        "optgroup",
-        { label: t(`catalog.groups.${group}`) },
-        exercises.map((exercise) =>
-          el("option", { value: exercise.id, text: t(`catalog.exercises.${exercise.id}`) }),
-        ),
+/**
+ * The exercise picker: a filter and one tap per exercise, open on one day at a time.
+ *
+ * Closed it is a single button. It has to be: the list is every exercise the user has, and
+ * leaving it open on every day card would make a three-day plan thousands of pixels tall.
+ *
+ * Open, it builds every row once and hides them as the query narrows rather than rebuilding
+ * the list. The filter cannot call onChange() — that re-renders the whole screen from state
+ * and would drop the iOS keyboard mid-word — so it toggles `.hidden` on nodes this function
+ * already owns, the same narrow exception the gain badge in views/day.js uses. Keeping the
+ * rows in catalog order also means the one you are reaching for never jumps.
+ */
+function exercisePicker({ day, picker, onPicker, onChange }) {
+  if (picker.dayId !== day.id) {
+    return el("button", {
+      type: "button",
+      class: "btn btn--primary btn--full",
+      text: t("planEditor.addExercise"),
+      on: { click: () => onPicker({ dayId: day.id, query: "" }) },
+    });
+  }
+
+  const filter = el("input", {
+    type: "text",
+    class: "text-input",
+    value: picker.query,
+    placeholder: t("planEditor.filterPlaceholder"),
+    "aria-label": t("planEditor.filterAria"),
+  });
+
+  const rows = [];
+  const groups = byGroup().map(({ group, exercises }) => {
+    const buttons = exercises.map((exercise) => {
+      const node = el("button", {
+        type: "button",
+        class: "btn pick",
+        text: exerciseLabel(exercise.id),
+        on: {
+          click: () => {
+            day.slots = [...day.slots, newSlot(exercise.id)];
+            onChange();
+          },
+        },
+      });
+      rows.push({ id: exercise.id, node });
+      return node;
+    });
+
+    return {
+      ids: exercises.map((exercise) => exercise.id),
+      section: el(
+        "div",
+        { class: "pick-group" },
+        el("div", { class: "eyebrow", text: t(`catalog.groups.${group}`) }),
+        ...buttons,
       ),
-    ),
-  );
+    };
+  });
+
+  const empty = el("p", { class: "note hidden", text: t("planEditor.noMatches") });
+
+  const narrow = () => {
+    const matching = new Set(
+      searchExercises(filter.value).flatMap(({ exercises }) => exercises.map((one) => one.id)),
+    );
+
+    for (const { id, node } of rows) node.classList.toggle("hidden", !matching.has(id));
+    for (const { ids, section } of groups) {
+      section.classList.toggle("hidden", !ids.some((id) => matching.has(id)));
+    }
+    empty.classList.toggle("hidden", matching.size > 0);
+  };
+
+  filter.addEventListener("input", () => {
+    // Remembered so the query survives the re-render that adding an exercise causes.
+    onPicker({ dayId: day.id, query: filter.value });
+    narrow();
+  });
+  narrow();
 
   return el(
     "div",
-    { class: "add-row" },
-    select,
-    el("button", {
-      type: "button",
-      class: "btn btn--primary",
-      text: t("planEditor.addExercise"),
-      on: {
-        click: () => {
-          day.slots = [...day.slots, newSlot(select.value)];
-          onChange();
-        },
-      },
-    }),
+    { class: "picker" },
+    el(
+      "div",
+      { class: "add-row" },
+      filter,
+      iconButton("×", t("planEditor.closePicker"), false, () =>
+        onPicker({ dayId: null, query: "" }),
+      ),
+    ),
+    ...groups.map(({ section }) => section),
+    empty,
   );
 }
 
-function dayCard({ draft, day, index, onChange }) {
+function dayCard({ draft, day, index, picker, onPicker, onChange }) {
   const label = dayLabel(draft, day);
 
   return el(
@@ -245,7 +307,7 @@ function dayCard({ draft, day, index, onChange }) {
       : day.slots.map((slot, slotIndex) =>
           slotRow({ day, slot, index: slotIndex, onChange }),
         ),
-    addExerciseRow({ day, onChange }),
+    exercisePicker({ day, picker, onPicker, onChange }),
   );
 }
 
@@ -253,7 +315,7 @@ function dayCard({ draft, day, index, onChange }) {
  * Renders the editor for `draft`. `onChange` re-renders; `onDone` hands the draft back to
  * the caller to be saved.
  */
-export function renderPlanEditor({ draft, onChange, onDone }) {
+export function renderPlanEditor({ draft, picker, onPicker, onChange, onDone }) {
   return fragment(
     el(
       "div",
@@ -300,7 +362,7 @@ export function renderPlanEditor({ draft, onChange, onDone }) {
     ),
 
     el("div", { class: "eyebrow", text: t("planEditor.daysLabel") }),
-    draft.days.map((day, index) => dayCard({ draft, day, index, onChange })),
+    draft.days.map((day, index) => dayCard({ draft, day, index, picker, onPicker, onChange })),
 
     el(
       "div",

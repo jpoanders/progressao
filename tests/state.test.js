@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { entryFields, exerciseLabel } from "../src/catalog.js";
 import { newDay, newPlan, newSlot } from "../src/plan.js";
 import {
   PREFS_KEY,
   STATE_KEY,
   STATE_VERSION,
   countDayEntries,
+  countExerciseUse,
   countOrphans,
   countPlanEntries,
   countSlotEntries,
@@ -70,10 +72,38 @@ function testPlan(weeks = 4) {
 const stateWith = (plan, extra = {}) => ({
   version: STATE_VERSION,
   lastExport: null,
+  exercises: [],
   plans: [plan],
   entries: {},
   setCounts: {},
   ...extra,
+});
+
+/** One of the user's own exercises, normalized — the shape the log persists. */
+const userExercise = (overrides = {}) => ({
+  id: "u-sled",
+  name: "Sled push",
+  group: "legs",
+  kind: "strength",
+  sets: 3,
+  reps: null,
+  ...overrides,
+});
+
+/** A plan that places a user exercise, which is what makes the ordering hazard reachable. */
+const planUsing = (exerciseId, slotId = "s-mine") => ({
+  id: "p1",
+  name: "Test block",
+  nameKey: null,
+  weeks: 4,
+  days: [
+    {
+      id: "day-a",
+      name: "Push",
+      nameKey: null,
+      slots: [{ id: slotId, exerciseId, name: null, nameKey: null, sets: 3, reps: null }],
+    },
+  ],
 });
 
 describe("storage keys", () => {
@@ -957,5 +987,232 @@ describe("a failing storage", () => {
 
     store.setEntryField("plan-default", 1, "d1-s1", 0, "kg", 60);
     assert.deepEqual(store.getEntry("plan-default", 1, "d1-s1", 0), { kg: 60, at: 1000 });
+  });
+});
+
+describe("the user's own exercises", () => {
+  const sled = userExercise();
+  const rower = userExercise({ id: "u-row", name: "Rower", group: "cardio", kind: "cardio" });
+
+  const withSled = (extra = {}) => ({
+    ...stateWith(planUsing("u-sled"), extra),
+    exercises: [sled],
+  });
+
+  it("keeps a slot placing one, and the records logged on it", () => {
+    // The headline hazard: normalizeSlot drops any slot whose exercise it cannot resolve, and
+    // the records go with it. The list has to be repaired before the plans are, or a custom
+    // slot and its history vanish on the first load after it was created.
+    const logged = { entries: { "p1|1|s-mine|0": { kg: 80, reps: 5 } } };
+    const normalized = normalizeState(withSled(logged));
+
+    assert.deepEqual(normalized.exercises, [sled]);
+    assert.equal(normalized.plans[0].days[0].slots.length, 1, "the slot survives");
+    assert.deepEqual(normalized.entries["p1|1|s-mine|0"], { kg: 80, reps: 5 }, "and its record");
+  });
+
+  it("drops the slot when the state holds no such exercise, which is the honest outcome", () => {
+    const normalized = normalizeState({
+      ...withSled({ entries: { "p1|1|s-mine|0": { kg: 80, reps: 5 } } }),
+      exercises: [],
+    });
+
+    assert.deepEqual(normalized.plans[0].days[0].slots, []);
+    assert.deepEqual(normalized.entries, {}, "the record has nowhere to live either");
+  });
+
+  it("keeps the fields a custom cardio exercise logs, not a strength one's", () => {
+    // normalizeEntry keeps only the fields the exercise actually logs. Judged against the
+    // wrong list it reads any custom exercise as strength and throws dist and time away.
+    const normalized = normalizeState({
+      ...stateWith(planUsing("u-row"), { entries: { "p1|1|s-mine|0": { dist: 5, time: 30 } } }),
+      exercises: [rower],
+    });
+
+    assert.deepEqual(normalized.entries["p1|1|s-mine|0"], { dist: 5, time: 30 });
+  });
+
+  it("repairs the list itself, and a repaired entry still holds its slot", () => {
+    const normalized = normalizeState({
+      ...withSled(),
+      exercises: [{ id: "u-sled", name: "  Sled push  ", group: "not-a-group" }],
+    });
+
+    assert.equal(normalized.exercises[0].name, "Sled push");
+    assert.equal(normalized.exercises[0].sets, 3, "given a catalog entry's shape");
+    assert.equal(normalized.plans[0].days[0].slots.length, 1, "and the slot is not collateral");
+  });
+
+  it("is a fixed point, so nothing shifts on the second load", () => {
+    const once = normalizeState(withSled({ entries: { "p1|1|s-mine|0": { kg: 80, reps: 5 } } }));
+    assert.deepEqual(normalizeState(once), once);
+  });
+
+  it("comes back empty from a state that predates the field", () => {
+    assert.deepEqual(normalizeState({ plans: [], entries: {} }).exercises, []);
+    assert.deepEqual(emptyState().exercises, []);
+  });
+
+  it("survives a list that is not a list", () => {
+    for (const junk of [null, 42, "u-sled", {}]) {
+      assert.deepEqual(normalizeState({ plans: [], entries: {}, exercises: junk }).exercises, []);
+    }
+  });
+});
+
+describe("managing the user's own exercises", () => {
+  const storeUsing = (exercises, extra = {}) =>
+    storeWith({ ...stateWith(planUsing("u-sled"), extra), exercises });
+
+  it("adds one under an id the catalog cannot collide with", () => {
+    const store = storeWith(stateWith(testPlan()));
+    const added = store.addExercise({ name: "Sled push", group: "legs", kind: "strength" });
+
+    assert.equal(added.name, "Sled push");
+    assert.ok(added.id.startsWith("u-"), added.id);
+    assert.deepEqual(store.state.exercises, [added]);
+  });
+
+  it("makes an added exercise resolvable straight away, without a reload", () => {
+    // The registry is what the views read. A newly added exercise the picker cannot resolve
+    // would render as a raw i18n key until the next boot.
+    const store = storeWith(stateWith(testPlan()));
+    const added = store.addExercise({ name: "Rower", group: "cardio", kind: "cardio" });
+
+    assert.deepEqual(entryFields(added.id), ["dist", "time"]);
+    assert.equal(exerciseLabel(added.id), "Rower");
+  });
+
+  it("refuses to add one without a usable name", () => {
+    const store = storeWith(stateWith(testPlan()));
+    assert.equal(store.addExercise({ name: "   ", group: "legs", kind: "strength" }), null);
+    assert.deepEqual(store.state.exercises, []);
+  });
+
+  it("persists an added exercise immediately, like every other mutator", () => {
+    const storage = fakeStorage();
+    const store = createStore(storage);
+    store.addExercise({ name: "Sled push", group: "legs", kind: "strength" });
+
+    assert.equal(storage.read(STATE_KEY).exercises[0].name, "Sled push");
+  });
+
+  it("renames one without disturbing the slots or records that use it", () => {
+    const logged = { entries: { "p1|1|s-mine|0": { kg: 80, reps: 5 } } };
+    const store = storeUsing([userExercise()], logged);
+    store.renameExercise("u-sled", "Prowler push");
+
+    assert.equal(store.state.exercises[0].name, "Prowler push");
+    assert.equal(exerciseLabel("u-sled"), "Prowler push", "and the views see it at once");
+    assert.equal(store.state.plans[0].days[0].slots.length, 1);
+    assert.deepEqual(store.getEntry("p1", 1, "s-mine", 0), { kg: 80, reps: 5 });
+  });
+
+  it("ignores a rename to nothing rather than leaving an unnameable exercise", () => {
+    const store = storeUsing([userExercise()]);
+    store.renameExercise("u-sled", "   ");
+    assert.equal(store.state.exercises[0].name, "Sled push");
+  });
+
+  it("deletes one, taking the slots that place it and their records", () => {
+    const store = storeUsing([userExercise(), userExercise({ id: "u-row", name: "Rower" })], {
+      entries: { "p1|1|s-mine|0": { kg: 80, reps: 5 } },
+      setCounts: { "p1|1|s-mine": 5 },
+    });
+
+    assert.equal(store.deleteExercise("u-sled"), true);
+    assert.deepEqual(store.state.exercises.map((e) => e.id), ["u-row"], "and only that one");
+    assert.deepEqual(store.state.plans[0].days[0].slots, [], "the slot goes with it");
+    assert.deepEqual(store.state.entries, {}, "so do its records");
+    assert.deepEqual(store.state.setCounts, {}, "and its set-count override");
+  });
+
+  it("leaves other exercises' records alone when one is deleted", () => {
+    const plan = planUsing("u-sled");
+    plan.days[0].slots.push({
+      id: "s-bench",
+      exerciseId: "bench-press",
+      name: null,
+      nameKey: null,
+      sets: 3,
+      reps: null,
+    });
+    const store = storeWith({
+      ...stateWith(plan, {
+        entries: { "p1|1|s-mine|0": { kg: 80, reps: 5 }, "p1|1|s-bench|0": { kg: 60, reps: 8 } },
+      }),
+      exercises: [userExercise()],
+    });
+
+    store.deleteExercise("u-sled");
+    assert.deepEqual(store.state.entries, { "p1|1|s-bench|0": { kg: 60, reps: 8 } });
+  });
+
+  it("reports nothing to delete for an id it does not have", () => {
+    const store = storeUsing([userExercise()]);
+    assert.equal(store.deleteExercise("u-nope"), false);
+    assert.equal(store.state.exercises.length, 1);
+  });
+
+  it("does not re-bound a record's timestamp on an unrelated edit", () => {
+    // A device whose clock ran ahead and was then corrected leaves records legitimately in
+    // the future. The CLOCK_SKEW bound belongs to reading a file, not to adding an exercise:
+    // re-normalizing the whole log here would strip `at` off real history nobody touched.
+    const ahead = 2_000_000_000_000; // 2033, well past CLOCK_SKEW from any real "now"
+    const store = createStore(fakeStorage({ [STATE_KEY]: JSON.stringify(stateWith(testPlan())) }), {
+      now: () => ahead,
+    });
+    store.setEntryField("p1", 1, "s-bench", 0, "kg", 60);
+    assert.equal(store.getEntry("p1", 1, "s-bench", 0).at, ahead, "written while ahead");
+
+    store.addExercise({ name: "Sled push", group: "legs", kind: "strength" });
+    assert.equal(store.getEntry("p1", 1, "s-bench", 0).at, ahead, "and left alone");
+  });
+});
+
+describe("countExerciseUse", () => {
+  const twoPlansUsing = () => {
+    const second = { ...planUsing("u-sled", "s-mine2"), id: "p2" };
+    return {
+      ...stateWith(planUsing("u-sled"), {
+        entries: {
+          "p1|1|s-mine|0": { kg: 80, reps: 5 },
+          "p1|2|s-mine|0": { kg: 85, reps: 5 },
+          "p2|1|s-mine2|0": { kg: 90, reps: 5 },
+        },
+      }),
+      exercises: [userExercise()],
+      plans: [planUsing("u-sled"), second],
+    };
+  };
+
+  it("counts the placements, the plans holding them, and their records", () => {
+    const state = normalizeState(twoPlansUsing());
+    assert.deepEqual(countExerciseUse(state, "u-sled"), { slots: 2, plans: 2, records: 3 });
+  });
+
+  it("counts records from every week, not just the one on screen", () => {
+    const state = normalizeState({
+      ...stateWith(planUsing("u-sled"), {
+        entries: { "p1|1|s-mine|0": { kg: 80, reps: 5 }, "p1|3|s-mine|1": { kg: 85, reps: 5 } },
+      }),
+      exercises: [userExercise()],
+    });
+    assert.equal(countExerciseUse(state, "u-sled").records, 2);
+  });
+
+  it("is all zeroes for an exercise no plan places", () => {
+    const state = normalizeState({ ...stateWith(testPlan()), exercises: [userExercise()] });
+    assert.deepEqual(countExerciseUse(state, "u-sled"), { slots: 0, plans: 0, records: 0 });
+  });
+
+  it("agrees with what deleting actually removes", () => {
+    // The count and the deletion have to share a definition, or the confirmation lies.
+    const store = storeWith(twoPlansUsing());
+    const { records } = countExerciseUse(store.state, "u-sled");
+    const before = Object.keys(store.state.entries).length;
+
+    store.deleteExercise("u-sled");
+    assert.equal(before - Object.keys(store.state.entries).length, records);
   });
 });

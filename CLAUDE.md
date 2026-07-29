@@ -74,15 +74,16 @@ screen changes (without it a keyboard user is stranded); and static markup in `i
 is reachable only through the `elements` map in `main.js`, so a new static node means
 editing both.
 
-Screen state (`"log" | "plans" | "editor"`) lives in a closure variable in `app.js` and is
-never persisted. The plan editor works on a **copy** (`draft`) and commits on Done — the
-one place in the app where edits are not saved immediately.
+Screen state (`"log" | "plans" | "editor" | "exercises"`) lives in a closure variable in
+`app.js` and is never persisted. The plan editor works on a **copy** (`draft`) and commits on
+Done — the one place in the app where edits are not saved immediately.
 
 ### The data model
 
-Two localStorage keys: `progression:v2` (the log, including plans — it is user data, so it
-belongs in the backup) and `progression:ui` (disposable preferences). Header comments in
-`src/state.js` and `src/plan.js` document the schema; keep them accurate.
+Two localStorage keys: `progression:v2` (the log, including plans and the user's own
+exercises — it is user data, so it belongs in the backup) and `progression:ui` (disposable
+preferences). Header comments in `src/state.js` and `src/plan.js` document the schema; keep
+them accurate.
 
 Records are keyed `<planId>|<week>|<slotId>|<setIndex>`. Three invariants follow, and most
 of the state code exists to preserve them:
@@ -129,14 +130,30 @@ in `src/i18n/index.js`, then add the file to `SHELL` in `sw.js`. The picker is b
 the registry. `tests/i18n.test.js` enforces exact key parity with English (the reference
 locale) and that every catalog exercise has a name in every language.
 
-### Adding an exercise
+### Exercises come from two places
 
-Append to `CATALOG` in `src/catalog.js` and add its name under `catalog.exercises.<id>` in
-every locale. Exercise ids are written into user plans, so **additions are cheap and
-renames break existing data**. Nothing outside `catalog.js` indexes `CATALOG` directly —
-go through `findExercise`/`byGroup`/`entryFields` so user-defined exercises (the planned
-next feature) can slide in behind them. `kind` decides which fields a set logs
-(`strength` → kg/reps, `cardio` → dist/time).
+`CATALOG` in `src/catalog.js` is the shipped list; the user's own exercises live in the log
+(`state.exercises`) and reach the lookup through `makeLookup`. `kind` decides which fields a
+set logs (`strength` → kg/reps, `cardio` → dist/time), and those two are the only kinds a
+user may pick — a third needs new `ENTRY_FIELDS`, `INTEGER_FIELDS` handling and
+`exercise.columns`/`pair`/`fields` keys in every locale.
+
+To add a *shipped* exercise: append to `CATALOG` and add its name under
+`catalog.exercises.<id>` in every locale. Ids are written into user plans, so **additions
+are cheap and renames break existing data**. Keep `CATALOG` the shipped list only —
+`tests/i18n.test.js` iterates it to demand a translation per id, which a name the user typed
+can never have.
+
+**Two lookups, and the difference matters.** Anything that can *delete* takes
+`makeLookup(exercises)` as an argument — `normalizeState`, `normalizePlan`, `normalizeEntry`
+— because `normalizeSlot` drops a slot whose exercise it cannot resolve and the records go
+with it, so the list has to be the one that arrived with the state. `parseBackup` normalizes
+a candidate file *before* the user confirms the import (`app.js:205`), so a module-level list
+written during normalization would survive a cancelled import and the next plan edit would
+delete every custom slot. Views and labels use the module registry instead
+(`findExercise`/`byGroup`/`entryFields`/`exerciseKind`/`exerciseLabel`/`searchExercises`),
+installed by the store in `saveState()`: threading a lookup to every leaf of `day.js` would
+buy nothing, and a stale registry only mislabels.
 
 ## Style
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { CATALOG } from "../src/catalog.js";
+import { CATALOG, makeLookup, setUserExercises } from "../src/catalog.js";
 import {
   MAX_DAYS,
   MAX_SETS,
@@ -17,13 +17,29 @@ import {
   newDay,
   newPlan,
   newSlot,
-  normalizePlan,
+  normalizePlan as normalizeRawPlan,
   planSlots,
   slotName,
 } from "../src/plan.js";
 import { setLocale } from "../src/i18n/index.js";
 
 const idsOf = (plan) => [...plan.days.map((day) => day.id), ...planSlots(plan).map((s) => s.id)];
+
+/**
+ * normalizePlan needs to be told which exercises exist. Most tests here only care about the
+ * catalog, so they reach it through this; the ones that do not pass their own lookup.
+ */
+const normalizePlan = (raw, lookup = makeLookup()) => normalizeRawPlan(raw, lookup);
+
+/** One of the user's own exercises, for the tests that care that the lookup has two sources. */
+const SLED = {
+  id: "u-sled",
+  name: "Sled push",
+  group: "legs",
+  kind: "strength",
+  sets: 3,
+  reps: null,
+};
 
 describe("factories", () => {
   it("mints a distinct id every time", () => {
@@ -80,6 +96,26 @@ describe("normalizePlan", () => {
       plan.days[0].slots.map((slot) => slot.exerciseId),
       ["bench-press"],
     );
+  });
+
+  it("keeps a slot placing one of the user's own exercises", () => {
+    // The lookup is an argument rather than module state precisely so this is decidable
+    // here: the list a plan is judged against is the one its caller handed over.
+    const raw = { days: [{ slots: [{ exerciseId: "u-sled" }] }] };
+
+    assert.equal(normalizePlan(raw, makeLookup([SLED])).days[0].slots.length, 1);
+    assert.equal(
+      normalizePlan(raw, makeLookup()).days[0].slots.length,
+      0,
+      "and drops it when the list it was given does not have it",
+    );
+  });
+
+  it("pre-fills sets from a user exercise, the same as from a catalog one", () => {
+    // normalizeSlot reads .sets off whatever the lookup returns, with no guard — so a user
+    // exercise has to arrive shaped like a catalog entry.
+    const raw = { days: [{ slots: [{ exerciseId: "u-sled" }] }] };
+    assert.equal(normalizePlan(raw, makeLookup([SLED])).days[0].slots[0].sets, SLED.sets);
   });
 
   it("clamps set counts and falls back to the catalog for a missing one", () => {
@@ -190,6 +226,33 @@ describe("displayName", () => {
       "Supino reto (barra ou halteres)");
 
     setLocale("en");
+  });
+
+  it("names a slot placing one of the user's own exercises", () => {
+    setUserExercises([SLED]);
+    try {
+      for (const tag of ["en", "pt-BR"]) {
+        setLocale(tag);
+        // There is no key to look up. Reaching for one would put the literal string
+        // "catalog.exercises.u-sled" on the day heading and in seven aria labels.
+        const slot = { exerciseId: "u-sled", name: null, nameKey: null };
+        assert.equal(slotName(slot), "Sled push", tag);
+      }
+    } finally {
+      setUserExercises([]);
+      setLocale("en");
+    }
+  });
+
+  it("still lets a slot's own name win over the exercise's", () => {
+    setUserExercises([SLED]);
+    try {
+      setLocale("en");
+      const slot = { exerciseId: "u-sled", name: "Heavy sled", nameKey: null };
+      assert.equal(slotName(slot), "Heavy sled");
+    } finally {
+      setUserExercises([]);
+    }
   });
 
   it("is empty for an unnamed day, leaving the caller to number it", () => {

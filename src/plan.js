@@ -10,19 +10,20 @@
  *   slot  { id, exerciseId, name, nameKey, sets, reps }
  *
  * ── Slots are the unit of history ────────────────────────────────────────────────────
- * A slot is one placement of a catalog exercise on a day, carrying its own id. Records
- * are keyed by slot id, not by exercise id, so the same exercise can appear twice on a
- * day and reordering or renaming never orphans what was logged. Editing a plan is
- * therefore safe; only *removing* a slot discards records, which src/state.js does
- * deliberately and after confirmation.
+ * A slot is one placement of an exercise on a day — shipped or the user's own, the plan
+ * cannot tell — carrying its own id. Records are keyed by slot id, not by exercise id, so
+ * the same exercise can appear twice on a day and reordering or renaming never orphans what
+ * was logged. Editing a plan is therefore safe; only *removing* a slot discards records,
+ * which src/state.js does deliberately and after confirmation.
  *
  * ── Names ────────────────────────────────────────────────────────────────────────────
  * `name` is a string the user typed and has no translation. `nameKey` is an i18n key;
  * the app no longer ships any plan that sets one, but the field stays part of the shape.
- * displayName() resolves the two, falling back to the catalog entry's own name.
+ * displayName() resolves those two and nothing else; slotName() adds the fallback to the
+ * exercise's own name, which src/catalog.js owns because only half of them have a key.
  */
 
-import { findExercise, isKnownExercise } from "./catalog.js";
+import { exerciseLabel, findExercise } from "./catalog.js";
 import { t } from "./i18n/index.js";
 
 export const MIN_WEEKS = 1;
@@ -103,25 +104,25 @@ function normalizeReps(raw) {
 /**
  * Repairs one slot, or returns null to drop it.
  *
- * A slot pointing at an exercise the catalog no longer knows is dropped rather than
- * rendered as a raw id — its records go with it, which is the honest outcome for a plan
- * that references something that no longer exists.
+ * A slot pointing at an exercise `lookup` does not know is dropped rather than rendered as a
+ * raw id — its records go with it, which is the honest outcome for a plan that references
+ * something that no longer exists.
  */
-function normalizeSlot(raw, takeId) {
-  if (!isPlainObject(raw) || !isKnownExercise(raw.exerciseId)) return null;
-  const catalogEntry = findExercise(raw.exerciseId);
+function normalizeSlot(raw, takeId, lookup) {
+  if (!isPlainObject(raw) || !lookup.isKnown(raw.exerciseId)) return null;
+  const entry = lookup.find(raw.exerciseId);
 
   return {
     id: takeId(raw.id, "s"),
     exerciseId: raw.exerciseId,
     name: asName(raw.name),
     nameKey: asName(raw.nameKey),
-    sets: Number.isFinite(raw.sets) ? clampSets(raw.sets) : catalogEntry.sets,
+    sets: Number.isFinite(raw.sets) ? clampSets(raw.sets) : entry.sets,
     reps: normalizeReps(raw.reps),
   };
 }
 
-function normalizeDay(raw, takeId) {
+function normalizeDay(raw, takeId, lookup) {
   const source = isPlainObject(raw) ? raw : {};
   const slots = Array.isArray(source.slots) ? source.slots : [];
 
@@ -129,7 +130,7 @@ function normalizeDay(raw, takeId) {
     id: takeId(source.id, "d"),
     name: asName(source.name),
     nameKey: asName(source.nameKey),
-    slots: slots.map((candidate) => normalizeSlot(candidate, takeId)).filter(Boolean),
+    slots: slots.map((candidate) => normalizeSlot(candidate, takeId, lookup)).filter(Boolean),
   };
 }
 
@@ -137,8 +138,12 @@ function normalizeDay(raw, takeId) {
  * Repairs a plan read from storage or an imported backup into something every view can
  * render without defensive checks: ids present and unique, counts within bounds, at least
  * one day. Never throws — a plan too broken to repair still comes back as an empty one.
+ *
+ * `lookup` says which exercises exist, and is required rather than defaulted on purpose:
+ * this function *deletes* slots it cannot resolve, and their records go with them, so the
+ * caller has to state the list it wants judged against. See makeLookup in src/catalog.js.
  */
-export function normalizePlan(raw) {
+export function normalizePlan(raw, lookup) {
   const source = isPlainObject(raw) ? raw : {};
 
   // Ids must be unique within a plan: they are what records are keyed by, so a duplicate
@@ -153,7 +158,7 @@ export function normalizePlan(raw) {
 
   const days = (Array.isArray(source.days) ? source.days : [])
     .slice(0, MAX_DAYS)
-    .map((day) => normalizeDay(day, takeId));
+    .map((day) => normalizeDay(day, takeId, lookup));
 
   return {
     id: typeof source.id === "string" && source.id !== "" ? source.id : newId("plan"),
@@ -192,17 +197,23 @@ export function dayNumber(plan, dayId) {
 
 /**
  * What to call a plan, a day, or a slot: the user's own words if they typed any, else the
- * i18n key the shipped plan carries, else — for slots — the catalog exercise's name.
+ * i18n key the shipped plan carries, else nothing — the caller decides what to fall back to.
  */
-export function displayName(node, fallbackKey = null) {
+export function displayName(node) {
   if (node?.name) return node.name;
   if (node?.nameKey) return t(node.nameKey);
-  return fallbackKey ? t(fallbackKey) : "";
+  return "";
 }
 
-/** A slot's display name, falling back to the catalog. */
+/**
+ * A slot's display name, falling back to the exercise it places.
+ *
+ * That fallback goes through exerciseLabel rather than straight to an i18n key, because only
+ * half the exercises have one: a user-defined exercise carries a typed name instead, and
+ * looking it up would render "catalog.exercises.u-ab12cd34" on the day heading.
+ */
 export function slotName(candidate) {
-  return displayName(candidate, `catalog.exercises.${candidate.exerciseId}`);
+  return displayName(candidate) || exerciseLabel(candidate.exerciseId);
 }
 
 /**

@@ -27,6 +27,7 @@ export default {
       context: "Semana {week}",
       contextPlans: "Planos",
       contextEditor: "Editando o plano",
+      contextExercises: "Meus exercícios",
     },
 
     units: {
@@ -85,6 +86,32 @@ export default {
       },
     },
 
+    exercises: {
+      title: "Meus exercícios",
+      back: "Voltar",
+      manage: "Gerenciar exercícios",
+      toolsNote: "Adicione o que não estiver no catálogo.",
+      createTitle: "Novo exercício",
+      create: "Criar exercício",
+      namePlaceholder: "ex.: Empurrar trenó",
+      nameAria: "Nome do novo exercício",
+      groupAria: "Grupo muscular",
+      kindAria: "O que cada série registra",
+      kind: {
+        strength: "Peso e repetições",
+        cardio: "Distância e tempo",
+      },
+      mine: "Seus exercícios",
+      empty: "Nenhum ainda — crie um acima.",
+      renameAria: "Renomear {exercise}",
+      remove: "Excluir",
+      nameRequired: "Dê um nome ao exercício primeiro.",
+      removeConfirmUnused: "Excluir “{exercise}”? Nenhum plano usa.",
+      removeConfirm: {
+        one: "“{exercise}” está em {slots} dia(s) de {plans} plano(s) e tem {n} registro. Excluir também remove esses dados. Não é possível desfazer.",
+        other: "“{exercise}” está em {slots} dia(s) de {plans} plano(s) e tem {n} registros. Excluir também remove esses dados. Não é possível desfazer.",
+      },
+    },
     plans: {
       title: "Planos",
       empty: "Nenhum plano ainda — crie um para começar a registrar.",
@@ -128,6 +155,10 @@ export default {
       removeSlotAria: "Remover {item}",
       emptyDay: "Nenhum exercício neste dia ainda.",
       addExercise: "Adicionar exercício",
+      filterPlaceholder: "Digite para filtrar a lista",
+      filterAria: "Filtrar exercícios",
+      noMatches: "Nenhum exercício corresponde.",
+      closePicker: "Fechar a lista de exercícios",
       repsLabel: "Reps",
       repsMinAria: "Mínimo de repetições de {exercise}",
       repsMaxAria: "Máximo de repetições de {exercise}",
