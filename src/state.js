@@ -20,7 +20,9 @@
  *
  * `at` is epoch ms of the last write to that record. It exists so records can be ordered
  * across plans, where week numbers are meaningless — see findPrevious. It is absent on
- * records written before schema 3, which sort below any timestamped record.
+ * records written before schema 3, which sort below any timestamped record; a timestamp
+ * that cannot be real (at or before the epoch, or more than CLOCK_SKEW ahead of now) is
+ * dropped on load and leaves the record in exactly that state.
  *
  * The key stays "progression:v2" at schema 3 on purpose: the key names the storage slot,
  * not the schema revision, and renaming it would strand every existing log.
@@ -108,8 +110,15 @@ function resolveKey(index, key, arity) {
   return slot ? { slot } : null;
 }
 
+/**
+ * How far ahead of `now` a stored timestamp is still believed. Device clocks drift and
+ * travel across timezones, so a few hours ahead is a real record; a date next year is a
+ * hand-edited backup or a machine with its clock set wrong.
+ */
+const CLOCK_SKEW = 24 * 60 * 60_000;
+
 /** Keeps only the fields this exercise actually logs, and only if something is filled in. */
-function normalizeEntry(raw, slot) {
+function normalizeEntry(raw, slot, now) {
   if (!isPlainObject(raw)) return null;
 
   const entry = {};
@@ -121,8 +130,10 @@ function normalizeEntry(raw, slot) {
   if (!filled) return null;
 
   // Carried after the fill check: a bare timestamp is not a record. Omitted rather than
-  // stored as null so records written before schema 3 stay byte-identical.
-  if (Number.isFinite(raw.at)) entry.at = raw.at;
+  // stored as null so records written before schema 3 stay byte-identical — which is also
+  // what an unbelievable date degrades to, since the numbers are still worth keeping and
+  // every reader already handles a record with no timestamp.
+  if (Number.isFinite(raw.at) && raw.at > 0 && raw.at <= now + CLOCK_SKEW) entry.at = raw.at;
   return entry;
 }
 
@@ -137,8 +148,10 @@ function normalizePlans(raw) {
 /**
  * Repairs anything read from storage or an imported backup. Never throws: a state too
  * broken to repair comes back empty rather than crashing the app on load.
+ *
+ * `now` is injected only so the timestamp bound is testable; every caller takes the default.
  */
-export function normalizeState(raw) {
+export function normalizeState(raw, now = Date.now()) {
   if (!isPlainObject(raw) || !isPlainObject(raw.entries)) return emptyState();
 
   const plans = normalizePlans(raw.plans);
@@ -148,7 +161,7 @@ export function normalizeState(raw) {
   for (const [key, value] of Object.entries(raw.entries)) {
     const resolved = resolveKey(index, key, 4);
     if (!resolved) continue;
-    const entry = normalizeEntry(value, resolved.slot);
+    const entry = normalizeEntry(value, resolved.slot, now);
     if (entry) entries[key] = entry;
   }
 
@@ -383,15 +396,21 @@ export function loggedDays(state, plan, week) {
  * what you need to know coming back to a block after a break. Records written before schema
  * 3 carry no timestamp, so a day holding only those reads as untimed — the same rule the
  * ghost row's age tag follows, and better than inventing a date.
+ *
+ * A timestamp ahead of `now` is skipped rather than reported. `normalizeState` bounds what
+ * it stores, but a clock that moves backwards mid-session can leave a legitimately written
+ * record in the future, and `formatAge` declines to phrase a negative age — so reporting one
+ * here would render the caller's label followed by a blank.
  */
-export function lastLoggedAt(state, plan, week, day) {
+export function lastLoggedAt(state, plan, week, day, now = Date.now()) {
   const slots = new Set(day.slots.map((slot) => slot.id));
   const prefix = `${plan.id}|${week}|`;
   let newest = null;
 
   for (const [key, entry] of Object.entries(state.entries)) {
     if (!key.startsWith(prefix) || !slots.has(key.split("|")[2])) continue;
-    if (Number.isFinite(entry.at) && (newest === null || entry.at > newest)) newest = entry.at;
+    if (!Number.isFinite(entry.at) || entry.at > now) continue;
+    if (newest === null || entry.at > newest) newest = entry.at;
   }
   return newest;
 }
