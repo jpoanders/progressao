@@ -53,8 +53,10 @@ Three layers, one direction of dependency:
 - **Store** — `createStore(storage)` in `state.js` wraps a Storage-like object; tests
   inject a fake. Every mutator writes through immediately (there is no save button).
 - **Views** — `views/*` are pure builders: they take state + callbacks and return DOM
-  nodes. They never touch the store's mutators directly except through the callbacks
-  `app.js` passes in. `app.js` owns all actions, confirmations, and `render()`.
+  nodes. Actions go through the callbacks `app.js` passes in, with one deliberate
+  exception: `views/day.js` calls `store.setEntryField` itself, because a keystroke has to
+  write through *without* a `render()` and `app.js` owns `render()`. Everything else —
+  confirmations, destructive actions, navigation — is `app.js`'s.
 
 There are no DOM tests and there cannot be: `node --test` runs without a DOM, and jsdom
 would be a dependency. So `views/*`, `dom.js`, `app.js` and `main.js` are checked by hand
@@ -144,9 +146,10 @@ match that density rather than commenting every line or none. Double quotes, sem
 `node:assert/strict`, and their names read as sentences ("keeps the session usable instead
 of throwing").
 
-`styles/app.css` states its own rule in its header and means it: colour is spent in exactly
-one place, the gain badge (`--gain`). Primary buttons are a solid ink fill, never a coloured
-one, and `--focus` is only ever an outline. New UI stays inside that.
+`styles/app.css` states its own rule in its header and means it: the gain badge (`--gain`)
+is the only colour the design *spends*. Primary buttons are a solid ink fill, never a
+coloured one; `--focus` is only ever an outline and `--danger` only ever text and a border.
+New UI stays inside that.
 
 ## Out of scope (by decision, not omission)
 

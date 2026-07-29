@@ -1,12 +1,16 @@
 # Roadmap — the next steps, in order
 
 **Date:** 2026-07-29
-**Status:** proposed
+**Status:** steps 1, 2 and 4 shipped; 3 and 5–8 outstanding
 
 Eight steps, each one shippable on its own and each leaving the app in a working state. They
 are ordered to be done one at a time, top to bottom: later steps assume earlier ones have
 landed, and doing them out of order means reworking the same code twice (noted per step
 where it matters).
+
+Each step carries its own status line. Shipped steps are kept rather than deleted: the
+problem statement is why the code looks the way it does, and the next person reading it
+deserves the reason and not just the result.
 
 When a step is picked up it gets its own spec and implementation plan under
 `docs/superpowers/`, the same as the two features already there. This file says *what* and
@@ -18,7 +22,8 @@ The app is not in production and has no users, so nothing here is ranked by risk
 data. Two consequences shape the sequence:
 
 - **Steps 1–4 come first because they are what you feel every session at the gym**, and each
-  is small enough to finish in one sitting. None of them changes the storage schema.
+  is small enough to finish in one sitting. None of them changes the storage schema. Steps 1,
+  2 and 4 have landed; step 3 is the one left, and nothing after it depends on it.
 - **Step 5 changes the schema, and that is cheapest right now.** There is no installed base
   to migrate and no backup file in anyone's inbox to stay compatible with. Every week that
   passes before it lands makes it more expensive, so it comes before the polish steps rather
@@ -42,6 +47,11 @@ something to lose, but the app cannot be handed to a real person before it is do
 ---
 
 ## Step 1: Show which days have been logged
+
+**Status: shipped** (`009b888`). `loggedWeeks`/`loggedDays` in `src/state.js`, read by
+`src/views/selectors.js`, marked with `.chip--logged` and spoken through `header.chipLogged`.
+One deviation from what is described below: the dot is `currentColor`, not `--ghost`, so it
+survives the ink fill a selected chip inverts to.
 
 **The problem.** The week and day chips (`src/views/selectors.js:26-42`) carry no state at
 all. Mid-block there is no way to tell Day 2 from Day 3 without tapping into each one and
@@ -67,6 +77,10 @@ locales, clear the day, confirm the mark goes.
 ---
 
 ## Step 2: Day chips carry the day's name
+
+**Status: shipped** (`009b888`). The key cleanup went further than "one of them should go":
+both were deleted for a single `plan.dayFallback` behind `dayLabel()` in `src/plan.js`, now
+shared by the chips, the day heading, the editor's day cards and the clear-day confirmation.
 
 **The problem.** `src/views/selectors.js:38` always renders `t("header.dayChip", { n })` —
 "Day 1", "Day 2" — even after the user has named the day "Push" in the editor. The heading
@@ -94,8 +108,10 @@ the blank one still reads "Day 2", and a 30-character name doesn't blow out the 
 
 ## Step 3: Pull last week's numbers for a whole exercise at once
 
+**Status: not started.** The only step of 1–4 still outstanding.
+
 **The problem.** The ghost row *is* the control — tapping it fills that set from last week
-(`src/views/day.js:167`). That is a nice piece of design, but it is per-set: a four-set
+(`src/views/day.js:168`). That is a nice piece of design, but it is per-set: a four-set
 exercise needs four taps before you can start editing, and you take them one-handed with a
 phone in the other.
 
@@ -120,6 +136,11 @@ Confirm cardio fills distance and time, not kg and reps.
 
 ## Step 4: Say when the day was last trained
 
+**Status: shipped** (`7d51cd9`). `lastLoggedAt` in `src/state.js`, rendered by
+`lastTrainedNote` in `src/views/day.js` through `day.lastLogged`. `formatAge` gained the
+`style` argument this needed, so the line reads "3 days ago" rather than the ghost tag's
+"3d ago".
+
 **The problem.** Records have carried an `at` timestamp since schema 3
 (`src/state.js:22`), and nothing on the log screen shows it. "Week 3, Day 2" tells you
 nothing about whether that was Tuesday or in March — which matters most when you come back
@@ -141,6 +162,9 @@ records, and a day whose records predate `at`.
 ---
 
 ## Step 5: User-defined exercises
+
+**Status: not started.** Still the largest step, and still the only one that changes the
+schema.
 
 **The problem.** The catalog is 22 hardcoded entries (`src/catalog.js:34`). Anything you
 actually do that isn't on that list cannot be logged. This is already the stated next feature
@@ -188,9 +212,11 @@ the new key.
 
 ## Step 6: Reach the editor from the day you are looking at
 
+**Status: not started.**
+
 **The problem.** Adding an exercise to today costs five screens: Log → Manage plans → Edit →
 scroll to the right day → add → Done. The empty-day state already offers the shortcut
-(`src/views/day.js:255-262`); a day with exercises on it does not.
+(`src/views/day.js:263-273`); a day with exercises on it does not.
 
 **What changes.** The recommended version is the cheap one: an "Edit this day" action on the
 day view that opens the editor, scrolled to that day's card. `onEditPlan` is already plumbed
@@ -211,6 +237,9 @@ Done returns somewhere sensible — note that `savePlan` currently always lands 
 ---
 
 ## Step 7: Make backup export work in an installed iOS app
+
+**Status: not started**, including the `markExported()` ordering fix below, which is a
+one-line change independent of whatever the iOS check turns up.
 
 **The problem.** `exportBackup` (`src/app.js:178`) builds a blob URL and clicks a synthetic
 `<a download>`. In an iOS home-screen PWA there is no download chrome, and that anchor has
@@ -239,6 +268,8 @@ fallback path still downloads.
 ---
 
 ## Step 8: Say what an import is about to replace
+
+**Status: not started.**
 
 **The problem.** Restoring a backup replaces everything and the confirmation
 (`src/app.js:206`) does not say what "everything" currently is. Restore an old file onto a
