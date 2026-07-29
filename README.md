@@ -157,8 +157,11 @@ Records are keyed `<planId>|<week>|<slotId>|<setIndex>`.
   records are keyed by. That is why renaming a day, reordering exercises, or putting the
   same exercise on a day twice never disturbs history: only *removing* a slot, dropping a
   day, or shortening a block discards records, and the editor says how many before it does.
-- **Records never cross plans.** The target-to-beat lookup walks earlier weeks within one
-  plan and stops there, so a new block starts clean on purpose.
+- **Stored records never cross plans** — every key starts with a plan id, and deleting or
+  editing a plan only ever touches its own. The target-to-beat *lookup* crosses once: it
+  walks earlier weeks of the same plan first, and only when it finds nothing there does it
+  fall back to the same exercise and set in another block, tagged with how long ago that
+  was. So week 1 of a new plan is not blank, but a plan's own history always wins.
 
 Exercise ids (`bench-press`, `romanian-deadlift`) come from `src/catalog.js` and are
 resolved to display names at render time through `src/i18n`. Names you type yourself are
@@ -230,4 +233,4 @@ are told how many first.
 ## Out of scope
 No charts, volume statistics, progression/deload maths, user accounts, cloud sync or
 timers. Deliberately lean. User-defined exercises (beyond the built-in catalog) are the
-next thing on the list.
+next substantial feature — see `docs/roadmap.md` for the ordered list of what comes next.
