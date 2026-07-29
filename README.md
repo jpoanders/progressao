@@ -8,8 +8,9 @@ last time** on that same exercise — the target to beat — so you can add load
 has, and which exercises sit on each day with what sets and rep range — all editable in
 the app. Keep several plans side by side. Each keeps its own history, but a lift you have logged
 before still shows its last numbers in a new block — so starting a fresh plan does not
-start from nothing. Exercises come from a built-in catalog (user-defined ones are
-next). The app opens on the Plans screen, and a fresh install has no plans until you create one there.
+start from nothing. Exercises come from a built-in catalog, and you can define your
+own for anything it does not have. The app opens on the Plans screen, and a fresh install has
+no plans until you create one there.
 
 Interface available in **English** and **Português (Brasil)**, switchable in the app.
 
@@ -145,7 +146,8 @@ The plan editor is the one exception: it works on a copy and commits on **Done**
 half-finished edit never becomes your plan.
 
 ### The storage schema
-Two top-level keys: `progression:v2` (the training log, including your plans) and
+Two top-level keys: `progression:v2` (the training log, including your plans and your own
+exercises) and
 `progression:ui` (preferences — which plan, week and day you were on, and your language).
 Losing the second one loses nothing.
 
@@ -223,9 +225,9 @@ The editor covers the whole shape of a block:
 - **Weeks** — how long the block runs (1 to 24).
 - **Days** — add, remove, rename and reorder them (up to 10). A day left unnamed is shown
   as "Day 3".
-- **Exercises** — pick from the catalog, grouped by muscle, then set the prescribed sets
-  and rep range for each. Clear either rep box for exercises logged without a rep target.
-  Reorder or remove them freely.
+- **Exercises** — type to filter the list, then tap to add. Set the prescribed sets and rep
+  range for each; clear either rep box for exercises logged without a rep target. Reorder or
+  remove them freely.
 
 Nothing is saved until you tap **Done**. Renaming and reordering never touch your records;
 if an edit *would* discard some — a removed exercise, a dropped day, a shorter block — you
@@ -233,5 +235,4 @@ are told how many first.
 
 ## Out of scope
 No charts, volume statistics, progression/deload maths, user accounts, cloud sync or
-timers. Deliberately lean. User-defined exercises (beyond the built-in catalog) are the
-next substantial feature — see `docs/roadmap.md` for the ordered list of what comes next.
+timers. Deliberately lean. See `docs/roadmap.md` for the ordered list of what comes next.

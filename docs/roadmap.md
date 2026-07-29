@@ -1,7 +1,7 @@
 # Roadmap — the next steps, in order
 
 **Date:** 2026-07-29
-**Status:** steps 1, 2 and 4 shipped; 3 and 5–8 outstanding
+**Status:** steps 1, 2, 4 and 5 shipped; 3 and 6–8 outstanding
 
 Eight steps, each one shippable on its own and each leaving the app in a working state. They
 are ordered to be done one at a time, top to bottom: later steps assume earlier ones have
@@ -24,10 +24,9 @@ data. Two consequences shape the sequence:
 - **Steps 1–4 come first because they are what you feel every session at the gym**, and each
   is small enough to finish in one sitting. None of them changes the storage schema. Steps 1,
   2 and 4 have landed; step 3 is the one left, and nothing after it depends on it.
-- **Step 5 changes the schema, and that is cheapest right now.** There is no installed base
-  to migrate and no backup file in anyone's inbox to stay compatible with. Every week that
-  passes before it lands makes it more expensive, so it comes before the polish steps rather
-  than after them.
+- **Step 5 changed the schema, and doing it early was the point.** It landed while there was
+  no installed base to migrate and no backup file in anyone's inbox to stay compatible with,
+  which is why it came before the polish steps rather than after them.
 
 Step 7 is a launch blocker rather than an urgent fix: nothing is at stake until there is
 something to lose, but the app cannot be handed to a real person before it is done.
@@ -36,8 +35,10 @@ something to lose, but the app cannot be handed to a real person before it is do
 
 - Any shipped file that changes means bumping `CACHE_VERSION` in `sw.js` and moving the
   previous-version literal forward in `tests/service-worker.test.js`. Do it last, in its own
-  commit, once per step.
-- Only step 5 adds a file, and only that step touches `SHELL`.
+  commit, once per step. The literal names the version being replaced, so it moves with the
+  bump — it was found one behind during step 5, which the assertion cannot catch by itself.
+- Only step 5 added a file, and only that step touched `SHELL`. Add the entry in the commit
+  that adds the file: `SHELL` is about which files exist, `CACHE_VERSION` about contents.
 - New user-facing text goes through `t()` in both locales — `tests/i18n.test.js` enforces
   parity. This includes `aria-label`s and anything inside `confirm()`/`alert()`.
 - Anything decidable belongs in the pure layer where `node --test` can reach it. `views/*`
@@ -163,8 +164,18 @@ records, and a day whose records predate `at`.
 
 ## Step 5: User-defined exercises
 
-**Status: not started.** Still the largest step, and still the only one that changes the
-schema.
+**Status: shipped.** `state.exercises` in `progression:v2`, a `makeLookup`/registry pair in
+`src/catalog.js`, and a fourth screen in `src/views/exercises.js`.
+
+Three deviations from what is described below. **The registry alone was not safe enough:**
+anything that can delete — `normalizeState`, `normalizePlan`, `normalizeEntry` — takes an
+explicit lookup argument instead, because `parseBackup` normalizes a candidate file *before*
+the import confirm (`app.js:205`), so a list installed during normalization would survive a
+cancelled import and the next plan edit would delete every custom slot. The registry is kept
+for the read path only. **`CATALOG` stayed the shipped 22** rather than becoming a merged
+list, which is what let `tests/i18n.test.js` go untouched — the parity worry below never
+fired. And **the picker became a filter over one-tap rows** rather than a `<select>` with a
+filter field, since a native wheel cannot be filtered at all.
 
 **The problem.** The catalog is 22 hardcoded entries (`src/catalog.js:34`). Anything you
 actually do that isn't on that list cannot be logged. This is already the stated next feature
