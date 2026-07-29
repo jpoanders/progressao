@@ -184,8 +184,9 @@ At the bottom of any screen there is a **Backup** section:
 - **Back up now** — downloads `progression-backup-YYYY-MM-DD.json` containing 100% of your
   progress. Keep it wherever you like (email it to yourself, iCloud Drive, Google Drive…).
 - **Restore a backup** — pick a backup file to **restore everything**. Restoring replaces
-  current progress (it asks for confirmation first). Backups exported by older versions of
-  the app still restore: the file format has not changed.
+  current progress (it asks for confirmation first). Backups exported before plans became
+  user-editable are rejected as invalid: they carry no `plans` array, and their records are
+  keyed by exercise rather than by slot, so there is nothing to restore them against.
 
 Tip: back up after important sessions, and before switching devices or clearing your browser.
 
