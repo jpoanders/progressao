@@ -12,6 +12,7 @@ import {
   findExercise,
   makeLookup,
   normalizeUserExercises,
+  searchExercises,
   setUserExercises,
   userExercises,
 } from "../src/catalog.js";
@@ -249,5 +250,62 @@ describe("the catalog", () => {
     for (const kind of USER_KINDS) {
       assert.ok(CATALOG.some((exercise) => exercise.kind === kind), `${kind} is a real kind`);
     }
+  });
+});
+
+describe("searchExercises", () => {
+  const flat = (groups) => groups.flatMap(({ exercises }) => exercises.map((e) => e.id));
+
+  it("is not a filter when there is nothing to filter on", () => {
+    setLocale("en");
+    for (const empty of ["", "   ", null, undefined, 42]) {
+      assert.deepEqual(searchExercises(empty), byGroup(), `query: ${empty}`);
+    }
+  });
+
+  it("matches part of a name, ignoring case", () => {
+    setLocale("en");
+    assert.deepEqual(flat(searchExercises("BENCH")), ["bench-press"]);
+    assert.deepEqual(flat(searchExercises("  bench  ")), ["bench-press"], "and is trimmed");
+  });
+
+  it("ignores accents, so a name can be typed on any keyboard", () => {
+    setLocale("pt-BR");
+    // "Elevação lateral" and "Tríceps na polia" — nobody should have to reach for the
+    // cedilla or the acute to find their own exercise.
+    assert.ok(flat(searchExercises("elevacao")).includes("lateral-raise"));
+    assert.ok(flat(searchExercises("triceps")).includes("triceps-pushdown"));
+    assert.ok(flat(searchExercises("Tríceps")).includes("triceps-pushdown"), "accented too");
+    setLocale(DEFAULT_LOCALE);
+  });
+
+  it("searches the active locale's names, not the ids", () => {
+    setLocale("pt-BR");
+    assert.deepEqual(flat(searchExercises("bench")), [], "the English name is not there");
+    assert.ok(flat(searchExercises("supino")).includes("bench-press"));
+    setLocale(DEFAULT_LOCALE);
+  });
+
+  it("finds one of the user's own exercises by its typed name", () => {
+    setLocale("en");
+    setUserExercises([userExercise({ name: "Prowler push" })]);
+    try {
+      assert.deepEqual(flat(searchExercises("prowler")), ["u-sled"]);
+    } finally {
+      setUserExercises([]);
+    }
+  });
+
+  it("drops a group with no match in it, heading and all", () => {
+    setLocale("en");
+    const groups = searchExercises("squat");
+
+    assert.deepEqual(groups.map(({ group }) => group), ["legs"]);
+    assert.ok(groups.every(({ exercises }) => exercises.length > 0));
+  });
+
+  it("comes back empty when nothing matches", () => {
+    setLocale("en");
+    assert.deepEqual(searchExercises("zzzzz"), []);
   });
 });

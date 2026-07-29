@@ -170,6 +170,33 @@ export function exerciseLabel(exerciseId) {
   return active.find(exerciseId)?.name || t(`catalog.exercises.${exerciseId}`);
 }
 
+/** Strips case and accents, so "elevacao" finds "Elevação" and nobody hunts for a cedilla. */
+const fold = (text) =>
+  text
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+
+/**
+ * byGroup(), narrowed to the exercises whose name matches `query`.
+ *
+ * Matches on the name as displayed, so it searches the active locale's words and a user's own
+ * typed ones — never the ids, which are not what anyone is looking at. An empty query is not a
+ * filter and returns everything, in catalog order; a group with no match drops out entirely,
+ * heading included.
+ */
+export function searchExercises(query) {
+  const needle = fold(typeof query === "string" ? query.trim() : "");
+  if (needle === "") return byGroup();
+
+  return byGroup()
+    .map(({ group, exercises }) => ({
+      group,
+      exercises: exercises.filter((exercise) => fold(exerciseLabel(exercise.id)).includes(needle)),
+    }))
+    .filter(({ exercises }) => exercises.length > 0);
+}
+
 const isPlainObject = (value) =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
