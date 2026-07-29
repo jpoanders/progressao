@@ -17,8 +17,8 @@
  * deliberately and after confirmation.
  *
  * ── Names ────────────────────────────────────────────────────────────────────────────
- * `name` is a string the user typed and has no translation. `nameKey` is an i18n key,
- * used by the plan this app ships with so it still reads correctly in both locales.
+ * `name` is a string the user typed and has no translation. `nameKey` is an i18n key;
+ * the app no longer ships any plan that sets one, but the field stays part of the shape.
  * displayName() resolves the two, falling back to the catalog entry's own name.
  */
 
@@ -50,9 +50,7 @@ export function weeksOf(plan) {
   return Array.from({ length: plan.weeks }, (_, index) => index + 1);
 }
 
-/**
- * A short unique id — plans get a random one when created.
- */
+/** A short unique id, minted for a plan, day, or slot when one is created. */
 export function newId(prefix) {
   const random = globalThis.crypto?.randomUUID
     ? globalThis.crypto.randomUUID().slice(0, 8)

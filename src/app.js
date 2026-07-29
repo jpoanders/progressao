@@ -151,7 +151,7 @@ export function createApp({ store, elements }) {
     if (!window.confirm(message)) return;
 
     store.deletePlan(plan.id);
-    render(); // a now-stale prefs.planId resolves to the first plan on the way through
+    render(); // a now-stale prefs.planId resolves to the first remaining plan, or nothing if none are left
   }
 
   /**

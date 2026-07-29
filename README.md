@@ -9,8 +9,7 @@ has, and which exercises sit on each day with what sets and rep range — all ed
 the app. Keep several plans side by side. Each keeps its own history, but a lift you have logged
 before still shows its last numbers in a new block — so starting a fresh plan does not
 start from nothing. Exercises come from a built-in catalog (user-defined ones are
-next). A fresh install starts on a 4-week starter block: four strength days plus a
-walk-run.
+next). The app opens on the Plans screen, and a fresh install has no plans until you create one there.
 
 Interface available in **English** and **Português (Brasil)**, switchable in the app.
 
@@ -103,7 +102,7 @@ styles/app.css          all styling, including the dark-mode palette and safe-ar
 src/main.js             entry point: collects the DOM, starts the app, registers the SW
 src/app.js              orchestration: rendering and the destructive/IO actions
 src/state.js            persistence, the storage schema, and pure state helpers
-src/plan.js             the Plan model: factories, repair, and the built-in starter plan
+src/plan.js             the Plan model: factories and repair
 src/catalog.js          the exercise catalog plans are built from
 src/format.js           number parsing and locale-aware display formatting
 src/dom.js              a small element builder
