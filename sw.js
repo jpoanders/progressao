@@ -22,6 +22,7 @@ const SHELL = [
   './src/i18n/pt-BR.js',
   './src/views/banners.js',
   './src/views/day.js',
+  './src/views/exercises.js',
   './src/views/fields.js',
   './src/views/planEditor.js',
   './src/views/plans.js',

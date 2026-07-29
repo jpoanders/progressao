@@ -32,6 +32,7 @@ export default {
       context: "Week {week}",
       contextPlans: "Plans",
       contextEditor: "Editing plan",
+      contextExercises: "My exercises",
     },
 
     units: {
@@ -98,6 +99,34 @@ export default {
       },
     },
 
+    exercises: {
+      title: "My exercises",
+      back: "Back",
+      manage: "Manage exercises",
+      toolsNote: "Add anything the catalogue does not already have.",
+      createTitle: "New exercise",
+      create: "Create exercise",
+      namePlaceholder: "e.g. Sled push",
+      nameAria: "Name of the new exercise",
+      groupAria: "Muscle group",
+      kindAria: "What a set of it records",
+      // Named after what you type into a set rather than "strength" or "cardio", because
+      // that is the part you actually meet on the log screen.
+      kind: {
+        strength: "Weight and reps",
+        cardio: "Distance and time",
+      },
+      mine: "Your exercises",
+      empty: "None yet — create one above.",
+      renameAria: "Rename {exercise}",
+      remove: "Delete",
+      nameRequired: "Give the exercise a name first.",
+      removeConfirmUnused: "Delete “{exercise}”? No plan uses it.",
+      removeConfirm: {
+        one: "“{exercise}” is on {slots} day(s) across {plans} plan(s) and has {n} logged record. Deleting it removes those too. This cannot be undone.",
+        other: "“{exercise}” is on {slots} day(s) across {plans} plan(s) and has {n} logged records. Deleting it removes those too. This cannot be undone.",
+      },
+    },
     plans: {
       title: "Plans",
       empty: "No plans yet — create one to start logging.",

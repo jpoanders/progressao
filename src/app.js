@@ -3,6 +3,7 @@ import { isoDateStamp } from "./format.js";
 import { clampSets, clonePlan, dayLabel, displayName, findDay, newPlan, slotName } from "./plan.js";
 import {
   countDayEntries,
+  countExerciseUse,
   countOrphans,
   countPlanEntries,
   hasCustomSetCounts,
@@ -12,6 +13,7 @@ import { resolveLocale, setLocale, t } from "./i18n/index.js";
 import { renderSelectors } from "./views/selectors.js";
 import { renderDayView } from "./views/day.js";
 import { renderPlansView } from "./views/plans.js";
+import { renderExercises } from "./views/exercises.js";
 import { renderPlanEditor } from "./views/planEditor.js";
 import { renderTools } from "./views/tools.js";
 import { updateBanners, wireBanners } from "./views/banners.js";
@@ -38,6 +40,12 @@ export function createApp({ store, elements }) {
    * reaches the draft. Only one picker is open at a time, so one query is enough.
    */
   let picker = { dayId: null, query: "" };
+  /**
+   * Where Back from the exercises screen returns to. It is reachable from Plans and from the
+   * training view's tools, and landing somewhere other than where you came from is exactly
+   * the wart docs/roadmap.md notes about the plan editor — not worth adding a second one.
+   */
+  let exercisesReturn = "plans";
   /** Last rendered position, so only real navigation scrolls back to the top. */
   let lastAnchor = null;
   /** Last rendered screen, so only a screen change moves focus. */
@@ -140,6 +148,47 @@ export function createApp({ store, elements }) {
     const opened = next.dayId !== picker.dayId;
     picker = next;
     if (opened) render();
+  }
+
+  /**
+   * Creating one is reported back so the form can clear its field only on success — the view
+   * has no way to know whether the name it was given was usable.
+   */
+  function manageExercises(from) {
+    exercisesReturn = from;
+    goTo("exercises");
+  }
+
+  function createExercise({ name, group, kind }) {
+    if (!store.addExercise({ name, group, kind })) {
+      window.alert(t("exercises.nameRequired"));
+      return false;
+    }
+    render();
+    return true;
+  }
+
+  function renameExercise(exercise, name) {
+    if (!store.renameExercise(exercise.id, name)) window.alert(t("exercises.nameRequired"));
+    // Rendered either way: on success to pick the new name up everywhere it shows, and on
+    // failure to put back the name the input has just been cleared of.
+    render();
+  }
+
+  /**
+   * Deleting one takes every slot placing it and every record on those, so it says how much
+   * before it does it — the same contract savePlan and deletePlan already keep.
+   */
+  function deleteExercise(exercise) {
+    const { slots, plans, records } = countExerciseUse(store.state, exercise.id);
+    const message =
+      slots === 0
+        ? t("exercises.removeConfirmUnused", { exercise: exercise.name })
+        : t("exercises.removeConfirm", { exercise: exercise.name, slots, plans, n: records });
+
+    if (!window.confirm(message)) return;
+    store.deleteExercise(exercise.id);
+    render();
   }
 
   function createPlan() {
@@ -248,6 +297,7 @@ export function createApp({ store, elements }) {
   function contextText(week) {
     if (screen === "plans") return t("header.contextPlans");
     if (screen === "editor") return t("header.contextEditor");
+    if (screen === "exercises") return t("header.contextExercises");
     return t("header.context", { week });
   }
 
@@ -261,6 +311,16 @@ export function createApp({ store, elements }) {
         onDone: savePlan,
       });
     }
+    if (screen === "exercises") {
+      return renderExercises({
+        store,
+        onCreate: createExercise,
+        onRename: renameExercise,
+        onDelete: deleteExercise,
+        onBack: () => goTo(exercisesReturn),
+      });
+    }
+
     if (screen === "plans") {
       return renderPlansView({
         store,
@@ -270,6 +330,7 @@ export function createApp({ store, elements }) {
         onDuplicate: duplicatePlan,
         onDelete: deletePlan,
         onCreate: createPlan,
+        onManageExercises: () => manageExercises("plans"),
         onBack: plan ? () => goTo("log") : null,
       });
     }
@@ -287,6 +348,7 @@ export function createApp({ store, elements }) {
         store,
         plan,
         onManagePlans: () => goTo("plans"),
+        onManageExercises: () => manageExercises("log"),
         onExport: exportBackup,
         onImport: openImportPicker,
         onLocaleChange: changeLocale,
