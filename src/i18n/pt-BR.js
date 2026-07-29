@@ -197,16 +197,5 @@ export default {
       installBody:
         "Safari → Compartilhar → “Adicionar à Tela de Início”. Abre em tela cheia e protege seus dados.",
     },
-
-    plan: {
-      defaultName: "Bloco inicial",
-      defaultDays: {
-        d1: "Dia 1 — Peito + superiores",
-        d2: "Dia 2 — Pernas (quadríceps)",
-        d3: "Dia 3 — Costas + superiores",
-        d4: "Dia 4 — Pernas (posterior)",
-        d5: "Dia 5 — Walk-run",
-      },
-    },
   },
 };

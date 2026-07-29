@@ -40,7 +40,6 @@ import { ENTRY_FIELDS, entryFields } from "./catalog.js";
 import {
   MAX_SETS,
   clampSets,
-  defaultPlan,
   findPlan,
   findSlot,
   normalizePlan,
@@ -60,12 +59,12 @@ export function setCountKey(planId, week, slotId) {
   return `${planId}|${week}|${slotId}`;
 }
 
-/** A fresh install still needs something to log against, so it starts on the built-in plan. */
+/** A fresh install starts with nothing — the user builds their first plan themselves. */
 export function emptyState() {
   return {
     version: STATE_VERSION,
     lastExport: null,
-    plans: [defaultPlan()],
+    plans: [],
     entries: {},
     setCounts: {},
   };
@@ -132,9 +131,7 @@ function normalizePlans(raw) {
 
   // Two plans sharing an id would share every record keyed under it.
   const seen = new Set();
-  const unique = plans.filter((plan) => (seen.has(plan.id) ? false : seen.add(plan.id)));
-
-  return unique.length > 0 ? unique : [defaultPlan()];
+  return plans.filter((plan) => (seen.has(plan.id) ? false : seen.add(plan.id)));
 }
 
 /**
@@ -516,10 +513,8 @@ export function createStore(storage = globalThis.localStorage, { now = () => Dat
       });
     },
 
-    /** Deletes a plan and every record logged under it. The last plan cannot be deleted. */
+    /** Deletes a plan and every record logged under it, including the last remaining one. */
     deletePlan(planId) {
-      if (state.plans.length <= 1) return false;
-
       state.plans = state.plans.filter((plan) => plan.id !== planId);
       for (const key of Object.keys(state.entries)) {
         if (key.startsWith(`${planId}|`)) delete state.entries[key];

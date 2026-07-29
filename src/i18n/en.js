@@ -4,9 +4,7 @@
  * This is the reference locale: `t()` falls back here for any key a translation is
  * missing, and tests assert every other locale mirrors this key structure exactly.
  *
- * `catalog.exercises` is keyed by the exercise ids in src/catalog.js. `plan.default*`
- * names the plan a fresh install starts on — plans the user builds carry their own typed
- * names instead, which have no translation (see displayName in src/plan.js).
+ * `catalog.exercises` is keyed by the exercise ids in src/catalog.js.
  */
 
 const ORDINAL_SUFFIX = { one: "st", two: "nd", few: "rd", other: "th" };
@@ -210,17 +208,6 @@ export default {
       installTitle: "Add to Home Screen",
       installBody:
         "Safari → Share → “Add to Home Screen”. It opens full screen and protects your data.",
-    },
-
-    plan: {
-      defaultName: "Starter block",
-      defaultDays: {
-        d1: "Day 1 — Chest + upper body",
-        d2: "Day 2 — Legs (quads)",
-        d3: "Day 3 — Back + upper body",
-        d4: "Day 4 — Legs (hamstrings)",
-        d5: "Day 5 — Walk-run",
-      },
     },
   },
 };

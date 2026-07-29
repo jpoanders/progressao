@@ -51,8 +51,7 @@ export function weeksOf(plan) {
 }
 
 /**
- * A short unique id. Only user-created plans get one — everything in DEFAULT_PLAN uses a
- * readable literal so that a fresh install is predictable, in tests and in a backup file.
+ * A short unique id — plans get a random one when created.
  */
 export function newId(prefix) {
   const random = globalThis.crypto?.randomUUID
@@ -81,93 +80,9 @@ export function newPlan(name = null) {
   return { id: newId("plan"), name, nameKey: null, weeks: DEFAULT_WEEKS, days: [newDay()] };
 }
 
-const slot = (id, exerciseId, sets, reps) => ({
-  id,
-  exerciseId,
-  name: null,
-  nameKey: null,
-  sets,
-  reps,
-});
-
-/**
- * The plan a fresh install starts on: the block this app was originally written around.
- * Its ids are literals rather than generated so an empty state is deterministic, and its
- * names are i18n keys so it reads correctly in both locales.
- */
-export const DEFAULT_PLAN = {
-  id: "plan-default",
-  name: null,
-  nameKey: "plan.defaultName",
-  weeks: 4,
-  days: [
-    {
-      id: "d1",
-      name: null,
-      nameKey: "plan.defaultDays.d1",
-      slots: [
-        slot("d1-s1", "bench-press", 3, [6, 8]),
-        slot("d1-s2", "incline-dumbbell-press", 3, [8, 10]),
-        slot("d1-s3", "shoulder-press", 3, [6, 8]),
-        slot("d1-s4", "chest-fly", 3, [12, 15]),
-        slot("d1-s5", "triceps-pushdown", 3, [10, 12]),
-        slot("d1-s6", "lateral-raise", 3, [12, 15]),
-      ],
-    },
-    {
-      id: "d2",
-      name: null,
-      nameKey: "plan.defaultDays.d2",
-      slots: [
-        slot("d2-s1", "back-squat", 3, [6, 8]),
-        slot("d2-s2", "leg-press", 3, [10, 12]),
-        slot("d2-s3", "hack-squat", 3, [10, 12]),
-        slot("d2-s4", "standing-calf-raise", 4, [12, 15]),
-        slot("d2-s5", "abs", 3, null),
-      ],
-    },
-    {
-      id: "d3",
-      name: null,
-      nameKey: "plan.defaultDays.d3",
-      slots: [
-        slot("d3-s1", "pull-up", 3, [6, 10]),
-        slot("d3-s2", "bent-over-row", 3, [8, 10]),
-        slot("d3-s3", "seated-row", 3, [10, 12]),
-        slot("d3-s4", "face-pull", 3, [12, 15]),
-        slot("d3-s5", "barbell-curl", 3, [8, 10]),
-        slot("d3-s6", "hammer-curl", 3, [10, 12]),
-      ],
-    },
-    {
-      id: "d4",
-      name: null,
-      nameKey: "plan.defaultDays.d4",
-      slots: [
-        slot("d4-s1", "romanian-deadlift", 3, [8, 10]),
-        slot("d4-s2", "leg-curl", 3, [10, 12]),
-        slot("d4-s3", "leg-extension", 3, [12, 15]),
-        slot("d4-s4", "seated-calf-raise", 4, [12, 15]),
-        slot("d4-s5", "abs", 3, null),
-      ],
-    },
-    {
-      id: "d5",
-      name: null,
-      nameKey: "plan.defaultDays.d5",
-      slots: [slot("d5-s1", "walk-run", 1, null)],
-    },
-  ],
-};
-
 /** A deep, independent copy — plans are mutable user data, never shared by reference. */
 export function clonePlan(plan) {
   return structuredClone(plan);
-}
-
-/** DEFAULT_PLAN as a fresh copy, safe to hand to a store that will mutate it. */
-export function defaultPlan() {
-  return clonePlan(DEFAULT_PLAN);
 }
 
 function isPlainObject(value) {
