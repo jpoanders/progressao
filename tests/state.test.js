@@ -215,6 +215,38 @@ describe("normalizeState", () => {
     );
     assert.equal(normalized.entries["p1|1|s-bench|0"], undefined);
   });
+
+  it("drops a timestamp that cannot be real, keeping the record it was on", () => {
+    const now = 1_753_660_800_000;
+    const normalized = normalizeState(
+      stateWith(plan, {
+        entries: {
+          "p1|1|s-bench|0": { kg: 60, reps: 8, at: now + 365 * 24 * 60 * 60_000 },
+          "p1|1|s-bench|1": { kg: 60, reps: 7, at: -5 },
+          "p1|1|s-bench|2": { kg: 60, reps: 6, at: now - 60_000 },
+        },
+      }),
+      now,
+    );
+
+    assert.deepEqual(
+      normalized.entries["p1|1|s-bench|0"],
+      { kg: 60, reps: 8 },
+      "a year in the future is not a date this app wrote",
+    );
+    assert.deepEqual(normalized.entries["p1|1|s-bench|1"], { kg: 60, reps: 7 }, "nor is 1969");
+    assert.deepEqual(normalized.entries["p1|1|s-bench|2"], { kg: 60, reps: 6, at: now - 60_000 });
+  });
+
+  it("tolerates the clock being a little ahead, which is a device and not a bad file", () => {
+    const now = 1_753_660_800_000;
+    const normalized = normalizeState(
+      stateWith(plan, { entries: { "p1|1|s-bench|0": { kg: 60, reps: 8, at: now + 60_000 } } }),
+      now,
+    );
+
+    assert.equal(normalized.entries["p1|1|s-bench|0"].at, now + 60_000);
+  });
 });
 
 describe("parseBackup", () => {
@@ -522,6 +554,21 @@ describe("what has been logged", () => {
     const untimed = stateWith(plan, { entries: { "p1|1|s-bench|0": { kg: 60, reps: 8 } } });
 
     assert.equal(lastLoggedAt(untimed, plan, 1, plan.days[0]), null);
+  });
+
+  it("looks past a timestamp in the future, which is a day that cannot have been trained", () => {
+    // A clock that moved backwards after a write leaves `at` ahead of now, and formatAge
+    // has nothing to say about a negative age — so a note built on one renders its label
+    // and a blank. Withhold the timestamp instead, and fall back to the newest real one.
+    const skewed = stateWith(plan, {
+      entries: {
+        "p1|1|s-bench|0": { kg: 60, reps: 8, at: 5000 },
+        "p1|1|s-bench|1": { kg: 60, reps: 7, at: 9000 },
+      },
+    });
+
+    assert.equal(lastLoggedAt(skewed, plan, 1, plan.days[0], 7000), 5000, "the newest real one");
+    assert.equal(lastLoggedAt(skewed, plan, 1, plan.days[0], 4000), null, "all of them ahead");
   });
 
   it("counts a record hidden behind a reduced set count", () => {
