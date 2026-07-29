@@ -9,7 +9,7 @@ import {
   MIN_WEEKS,
   clampSets,
   clampWeeks,
-  displayName,
+  dayLabel,
   moveItem,
   newDay,
   newSlot,
@@ -195,7 +195,7 @@ function addExerciseRow({ day, onChange }) {
 }
 
 function dayCard({ draft, day, index, onChange }) {
-  const label = displayName(day) || t("planEditor.dayFallback", { n: index + 1 });
+  const label = dayLabel(draft, day);
 
   return el(
     "section",

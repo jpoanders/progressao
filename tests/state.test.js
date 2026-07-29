@@ -16,6 +16,8 @@ import {
   findPrevious,
   getSetCount,
   hasCustomSetCounts,
+  loggedDays,
+  loggedWeeks,
   newestByExercise,
   normalizePrefs,
   normalizeState,
@@ -459,6 +461,51 @@ describe("counting records", () => {
     const custom = normalizeState(stateWith(plan, { setCounts: { "p1|1|s-bench": 5 } }));
     assert.equal(hasCustomSetCounts(custom, "p1", 1, plan.days[0]), true);
     assert.equal(hasCustomSetCounts(custom, "p1", 2, plan.days[0]), false);
+  });
+});
+
+describe("what has been logged", () => {
+  const plan = testPlan();
+  const state = normalizeState(
+    stateWith(plan, {
+      entries: {
+        "p1|1|s-bench|0": { kg: 60, reps: 8 },
+        "p1|1|s-abs|0": { reps: 20 },
+        "p1|3|s-run|0": { dist: 3, time: 20 },
+      },
+    }),
+  );
+
+  it("reports the weeks that hold something", () => {
+    assert.deepEqual(loggedWeeks(state, plan), new Set([1, 3]));
+  });
+
+  it("reports the days of one week that hold something", () => {
+    assert.deepEqual(loggedDays(state, plan, 1), new Set(["day-a"]));
+    assert.deepEqual(loggedDays(state, plan, 3), new Set(["day-b"]));
+    assert.deepEqual(loggedDays(state, plan, 2), new Set());
+  });
+
+  it("is empty for a plan nothing has been logged against", () => {
+    const other = { ...testPlan(), id: "p2" };
+    assert.deepEqual(loggedWeeks(state, other), new Set());
+    assert.deepEqual(loggedDays(state, other, 1), new Set());
+  });
+
+  it("ignores a record whose slot the plan no longer has", () => {
+    // Not reachable through normalizeState, which prunes these — but the helpers run on
+    // whatever the store holds, and a mark you cannot open anything behind would be a lie.
+    const stale = stateWith(plan, { entries: { "p1|1|s-gone|0": { kg: 40, reps: 5 } } });
+
+    assert.deepEqual(loggedDays(stale, plan, 1), new Set());
+    assert.deepEqual(loggedWeeks(stale, plan), new Set());
+  });
+
+  it("counts a record hidden behind a reduced set count", () => {
+    // The stepper hides sets rather than deleting them, and the day has still been trained.
+    const hidden = stateWith(plan, { entries: { "p1|1|s-bench|7": { kg: 60, reps: 8 } } });
+
+    assert.deepEqual(loggedDays(hidden, plan, 1), new Set(["day-a"]));
   });
 });
 

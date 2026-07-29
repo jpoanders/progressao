@@ -205,6 +205,17 @@ export function slotName(candidate) {
   return displayName(candidate, `catalog.exercises.${candidate.exerciseId}`);
 }
 
+/**
+ * What to call a day: its name, or its position when the user left it blank.
+ *
+ * Lives here rather than in a view because three of them need it — the day heading, the
+ * editor's day card, and the header chips — and a day going by two different names one line
+ * apart is exactly the confusion this replaces.
+ */
+export function dayLabel(plan, day) {
+  return displayName(day) || t("plan.dayFallback", { n: dayNumber(plan, day.id) });
+}
+
 /** Moves an item within an array by `delta`, returning a new array. */
 export function moveItem(items, index, delta) {
   const target = index + delta;

@@ -336,6 +336,46 @@ export function countSlotEntries(state, planId, week, slotId) {
   ).length;
 }
 
+/** slotId → dayId for one plan, so a record key can be traced back to the day it sits on. */
+function dayOfSlot(plan) {
+  return new Map(plan.days.flatMap((day) => day.slots.map((slot) => [slot.id, day.id])));
+}
+
+/**
+ * Which weeks of a plan hold a record, and which days hold one in a given week.
+ *
+ * What the header chips are marked from: mid-block the only way to tell a day you have
+ * already trained from one you have not is to open it and look.
+ *
+ * Both read every set index rather than the current set count, so a record hidden behind a
+ * reduced stepper still counts — the day was trained either way. Both also ignore a record
+ * whose slot the plan no longer has: `normalizeState` prunes those, but if one survives it
+ * is invisible in the app, and a mark pointing at nothing you can open would be a lie.
+ */
+export function loggedWeeks(state, plan) {
+  const dayOf = dayOfSlot(plan);
+  const weeks = new Set();
+
+  for (const key of Object.keys(state.entries)) {
+    const [planId, week, slotId] = key.split("|");
+    if (planId === plan.id && dayOf.has(slotId)) weeks.add(Number(week));
+  }
+  return weeks;
+}
+
+export function loggedDays(state, plan, week) {
+  const dayOf = dayOfSlot(plan);
+  const days = new Set();
+  const prefix = `${plan.id}|${week}|`;
+
+  for (const key of Object.keys(state.entries)) {
+    if (!key.startsWith(prefix)) continue;
+    const dayId = dayOf.get(key.split("|")[2]);
+    if (dayId !== undefined) days.add(dayId);
+  }
+  return days;
+}
+
 /** Every record belonging to a plan — what deleting it would throw away. */
 export function countPlanEntries(state, planId) {
   return Object.keys(state.entries).filter((key) => key.startsWith(`${planId}|`)).length;

@@ -274,6 +274,37 @@ footer {
   border-color: var(--ink);
 }
 
+/*
+ * A day chip carries the day's name, which the user writes and can therefore make long.
+ * It truncates rather than pushing the rest of the row off-screen; the full name stays in
+ * the accessible name, and the row scrolls, so nothing is unreachable.
+ */
+#day-seg .chip {
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Already logged. A dot, not a colour — colour belongs to the gain badge alone. It sits
+ * inside the pill's own padding so marking a chip never reflows the row, and it rides the
+ * text colour so it stays visible once the chip is selected and inverts to the ink fill.
+ */
+.chip--logged {
+  position: relative;
+}
+.chip--logged::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 .text-input {
   width: 100%;
   min-height: var(--tap);
