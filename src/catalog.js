@@ -149,10 +149,6 @@ export function findExercise(exerciseId) {
   return active.find(exerciseId);
 }
 
-export function isKnownExercise(exerciseId) {
-  return active.isKnown(exerciseId);
-}
-
 export function entryFields(exerciseId) {
   return active.fields(exerciseId);
 }

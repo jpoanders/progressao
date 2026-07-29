@@ -22,7 +22,7 @@
  * displayName() resolves the two, falling back to the catalog entry's own name.
  */
 
-import { findExercise, isKnownExercise } from "./catalog.js";
+import { findExercise } from "./catalog.js";
 import { t } from "./i18n/index.js";
 
 export const MIN_WEEKS = 1;
@@ -103,25 +103,25 @@ function normalizeReps(raw) {
 /**
  * Repairs one slot, or returns null to drop it.
  *
- * A slot pointing at an exercise the catalog no longer knows is dropped rather than
- * rendered as a raw id — its records go with it, which is the honest outcome for a plan
- * that references something that no longer exists.
+ * A slot pointing at an exercise `lookup` does not know is dropped rather than rendered as a
+ * raw id — its records go with it, which is the honest outcome for a plan that references
+ * something that no longer exists.
  */
-function normalizeSlot(raw, takeId) {
-  if (!isPlainObject(raw) || !isKnownExercise(raw.exerciseId)) return null;
-  const catalogEntry = findExercise(raw.exerciseId);
+function normalizeSlot(raw, takeId, lookup) {
+  if (!isPlainObject(raw) || !lookup.isKnown(raw.exerciseId)) return null;
+  const entry = lookup.find(raw.exerciseId);
 
   return {
     id: takeId(raw.id, "s"),
     exerciseId: raw.exerciseId,
     name: asName(raw.name),
     nameKey: asName(raw.nameKey),
-    sets: Number.isFinite(raw.sets) ? clampSets(raw.sets) : catalogEntry.sets,
+    sets: Number.isFinite(raw.sets) ? clampSets(raw.sets) : entry.sets,
     reps: normalizeReps(raw.reps),
   };
 }
 
-function normalizeDay(raw, takeId) {
+function normalizeDay(raw, takeId, lookup) {
   const source = isPlainObject(raw) ? raw : {};
   const slots = Array.isArray(source.slots) ? source.slots : [];
 
@@ -129,7 +129,7 @@ function normalizeDay(raw, takeId) {
     id: takeId(source.id, "d"),
     name: asName(source.name),
     nameKey: asName(source.nameKey),
-    slots: slots.map((candidate) => normalizeSlot(candidate, takeId)).filter(Boolean),
+    slots: slots.map((candidate) => normalizeSlot(candidate, takeId, lookup)).filter(Boolean),
   };
 }
 
@@ -137,8 +137,12 @@ function normalizeDay(raw, takeId) {
  * Repairs a plan read from storage or an imported backup into something every view can
  * render without defensive checks: ids present and unique, counts within bounds, at least
  * one day. Never throws — a plan too broken to repair still comes back as an empty one.
+ *
+ * `lookup` says which exercises exist, and is required rather than defaulted on purpose:
+ * this function *deletes* slots it cannot resolve, and their records go with them, so the
+ * caller has to state the list it wants judged against. See makeLookup in src/catalog.js.
  */
-export function normalizePlan(raw) {
+export function normalizePlan(raw, lookup) {
   const source = isPlainObject(raw) ? raw : {};
 
   // Ids must be unique within a plan: they are what records are keyed by, so a duplicate
@@ -153,7 +157,7 @@ export function normalizePlan(raw) {
 
   const days = (Array.isArray(source.days) ? source.days : [])
     .slice(0, MAX_DAYS)
-    .map((day) => normalizeDay(day, takeId));
+    .map((day) => normalizeDay(day, takeId, lookup));
 
   return {
     id: typeof source.id === "string" && source.id !== "" ? source.id : newId("plan"),

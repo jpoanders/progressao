@@ -38,7 +38,7 @@
  * plan safe to reason about — what you see in the app is exactly what is stored.
  */
 
-import { ENTRY_FIELDS, entryFields } from "./catalog.js";
+import { ENTRY_FIELDS, makeLookup } from "./catalog.js";
 import {
   MAX_SETS,
   clampSets,
@@ -117,13 +117,19 @@ function resolveKey(index, key, arity) {
  */
 const CLOCK_SKEW = 24 * 60 * 60_000;
 
-/** Keeps only the fields this exercise actually logs, and only if something is filled in. */
-function normalizeEntry(raw, slot, now) {
+/**
+ * Keeps only the fields this exercise actually logs, and only if something is filled in.
+ *
+ * `lookup` decides which fields those are, so it is passed in for the same reason
+ * normalizePlan takes one: getting it wrong here silently discards a cardio exercise's
+ * distance and time as fields it does not log.
+ */
+function normalizeEntry(raw, slot, now, lookup) {
   if (!isPlainObject(raw)) return null;
 
   const entry = {};
   let filled = false;
-  for (const field of entryFields(slot.exerciseId)) {
+  for (const field of lookup.fields(slot.exerciseId)) {
     entry[field] = asNumber(raw[field]);
     if (entry[field] != null) filled = true;
   }
@@ -137,8 +143,8 @@ function normalizeEntry(raw, slot, now) {
   return entry;
 }
 
-function normalizePlans(raw) {
-  const plans = (Array.isArray(raw) ? raw : []).map(normalizePlan);
+function normalizePlans(raw, lookup) {
+  const plans = (Array.isArray(raw) ? raw : []).map((plan) => normalizePlan(plan, lookup));
 
   // Two plans sharing an id would share every record keyed under it.
   const seen = new Set();
@@ -154,14 +160,15 @@ function normalizePlans(raw) {
 export function normalizeState(raw, now = Date.now()) {
   if (!isPlainObject(raw) || !isPlainObject(raw.entries)) return emptyState();
 
-  const plans = normalizePlans(raw.plans);
+  const lookup = makeLookup();
+  const plans = normalizePlans(raw.plans, lookup);
   const index = planIndex(plans);
 
   const entries = {};
   for (const [key, value] of Object.entries(raw.entries)) {
     const resolved = resolveKey(index, key, 4);
     if (!resolved) continue;
-    const entry = normalizeEntry(value, resolved.slot, now);
+    const entry = normalizeEntry(value, resolved.slot, now, lookup);
     if (entry) entries[key] = entry;
   }
 
@@ -480,7 +487,7 @@ export function createStore(storage = globalThis.localStorage, { now = () => Dat
   const savePrefs = () => persist(PREFS_KEY, prefs);
 
   function addPlan(plan) {
-    const normalized = normalizePlan(plan);
+    const normalized = normalizePlan(plan, makeLookup());
     state.plans = [...state.plans, normalized];
     saveState();
     return normalized;
@@ -562,7 +569,7 @@ export function createStore(storage = globalThis.localStorage, { now = () => Dat
 
     /** Replaces a plan in place, discarding records the revision has no room for. */
     updatePlan(plan) {
-      const normalized = normalizePlan(plan);
+      const normalized = normalizePlan(plan, makeLookup());
       const index = state.plans.findIndex((candidate) => candidate.id === normalized.id);
       if (index === -1) return addPlan(plan);
 

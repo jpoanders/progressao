@@ -10,7 +10,6 @@ import {
   exerciseKind,
   exerciseLabel,
   findExercise,
-  isKnownExercise,
   makeLookup,
   normalizeUserExercises,
   setUserExercises,
@@ -95,7 +94,6 @@ describe("the exercise registry", () => {
   it("installs a list that the module-level lookups then see", () => {
     setUserExercises([userExercise({ id: "u-row", kind: "cardio" })]);
     try {
-      assert.equal(isKnownExercise("u-row"), true);
       assert.equal(findExercise("u-row").name, "Sled push");
       assert.deepEqual(entryFields("u-row"), ["dist", "time"]);
       assert.equal(exerciseKind("u-row"), "cardio");
@@ -109,8 +107,8 @@ describe("the exercise registry", () => {
     setUserExercises([userExercise({ id: "u-first" })]);
     setUserExercises([userExercise({ id: "u-second" })]);
     try {
-      assert.equal(isKnownExercise("u-second"), true);
-      assert.equal(isKnownExercise("u-first"), false, "installing replaces, it never adds");
+      assert.ok(findExercise("u-second"));
+      assert.equal(findExercise("u-first"), null, "installing replaces, it never adds");
     } finally {
       setUserExercises([]);
     }
@@ -120,7 +118,7 @@ describe("the exercise registry", () => {
     setUserExercises("nonsense");
     try {
       assert.deepEqual(userExercises(), []);
-      assert.equal(isKnownExercise("bench-press"), true);
+      assert.ok(findExercise("bench-press"));
     } finally {
       setUserExercises([]);
     }
@@ -180,11 +178,13 @@ describe("normalizeUserExercises", () => {
   });
 
   it("drops an entry with no id, since records are keyed through it", () => {
-    assert.deepEqual(normalizeUserExercises([{ name: "Nameless id" }, { id: "", name: "Blank" }]), []);
+    const raw = [{ name: "Nameless id" }, { id: "", name: "Blank" }];
+    assert.deepEqual(normalizeUserExercises(raw), []);
   });
 
   it("trims the name, matching how the plan editor stores one", () => {
-    assert.equal(normalizeUserExercises([{ id: "u-a", name: "  Sled push \n" }])[0].name, "Sled push");
+    const [exercise] = normalizeUserExercises([{ id: "u-a", name: "  Sled push \n" }]);
+    assert.equal(exercise.name, "Sled push");
   });
 
   it("repairs an unknown group rather than dropping the exercise", () => {
@@ -200,7 +200,10 @@ describe("normalizeUserExercises", () => {
       { id: "u-b", name: "B", kind: "cardio" },
       { id: "u-c", name: "C" },
     ]);
-    assert.deepEqual(normalized.map((exercise) => exercise.kind), ["strength", "cardio", "strength"]);
+    assert.deepEqual(
+      normalized.map((exercise) => exercise.kind),
+      ["strength", "cardio", "strength"],
+    );
   });
 
   it("gives every entry the same shape a catalog entry has", () => {
