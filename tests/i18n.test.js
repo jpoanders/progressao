@@ -12,7 +12,6 @@ import {
   t,
 } from "../src/i18n/index.js";
 import { CATALOG, GROUPS } from "../src/catalog.js";
-import { DEFAULT_PLAN, planSlots } from "../src/plan.js";
 
 const PLURAL_CATEGORIES = new Set(["zero", "one", "two", "few", "many", "other"]);
 
@@ -86,24 +85,6 @@ describe("locale key parity", () => {
     }
   });
 
-  it("resolves every nameKey the built-in plan carries", () => {
-    const keys = [DEFAULT_PLAN.nameKey, ...DEFAULT_PLAN.days.map((day) => day.nameKey)];
-
-    for (const tag of Object.keys(LOCALES)) {
-      setLocale(tag);
-      for (const key of keys) {
-        assert.notEqual(t(key), key, `${tag} has no string for ${key}`);
-      }
-    }
-    setLocale(DEFAULT_LOCALE);
-  });
-
-  it("leaves the built-in plan's slots to the catalog rather than naming them twice", () => {
-    for (const slot of planSlots(DEFAULT_PLAN)) {
-      assert.equal(slot.name, null);
-      assert.equal(slot.nameKey, null);
-    }
-  });
 });
 
 describe("plural entries", () => {
@@ -193,7 +174,6 @@ describe("t", () => {
       t("catalog.exercises.bench-press"),
       "Flat bench press (barbell or dumbbells)",
     );
-    assert.equal(t("plan.defaultDays.d2"), "Day 2 — Legs (quads)");
 
     setLocale("pt-BR");
     assert.equal(t("catalog.exercises.bench-press"), "Supino reto (barra ou halteres)");

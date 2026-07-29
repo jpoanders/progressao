@@ -61,6 +61,7 @@ export function renderPlansView({
 }) {
   return fragment(
     el("h2", { class: "screen-title", tabIndex: -1, text: t("plans.title") }),
+    store.plans.length === 0 ? el("p", { class: "note", text: t("plans.empty") }) : null,
     store.plans.map((plan) =>
       planCard({
         store,
@@ -81,12 +82,14 @@ export function renderPlansView({
         text: t("plans.create"),
         on: { click: onCreate },
       }),
-      el("button", {
-        type: "button",
-        class: "btn",
-        text: t("plans.back"),
-        on: { click: onBack },
-      }),
+      onBack
+        ? el("button", {
+            type: "button",
+            class: "btn",
+            text: t("plans.back"),
+            on: { click: onBack },
+          })
+        : null,
     ),
   );
 }

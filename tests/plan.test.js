@@ -1,16 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { CATALOG, isKnownExercise } from "../src/catalog.js";
+import { CATALOG } from "../src/catalog.js";
 import {
-  DEFAULT_PLAN,
   MAX_DAYS,
   MAX_SETS,
   MAX_WEEKS,
   clampSets,
   clampWeeks,
   dayNumber,
-  defaultPlan,
   displayName,
   findDay,
   findPlan,
@@ -26,43 +24,6 @@ import {
 import { setLocale } from "../src/i18n/index.js";
 
 const idsOf = (plan) => [...plan.days.map((day) => day.id), ...planSlots(plan).map((s) => s.id)];
-
-describe("the built-in plan", () => {
-  it("only references exercises the catalog knows", () => {
-    for (const slot of planSlots(DEFAULT_PLAN)) {
-      assert.ok(
-        isKnownExercise(slot.exerciseId),
-        `${slot.id} references the unknown exercise "${slot.exerciseId}"`,
-      );
-    }
-  });
-
-  it("gives every day and slot a unique id, because records are keyed by them", () => {
-    const ids = idsOf(DEFAULT_PLAN);
-    assert.equal(new Set(ids).size, ids.length);
-  });
-
-  it("names itself and its days through i18n rather than literal text", () => {
-    assert.ok(DEFAULT_PLAN.nameKey);
-    assert.equal(DEFAULT_PLAN.name, null);
-    for (const day of DEFAULT_PLAN.days) {
-      assert.ok(day.nameKey, `day ${day.id} has no nameKey`);
-      assert.equal(day.name, null);
-    }
-  });
-
-  it("survives normalization untouched — it is already the canonical shape", () => {
-    assert.deepEqual(normalizePlan(DEFAULT_PLAN), DEFAULT_PLAN);
-  });
-
-  it("hands out independent copies, so one store cannot mutate another's", () => {
-    const first = defaultPlan();
-    first.days[0].slots[0].sets = 99;
-
-    assert.equal(defaultPlan().days[0].slots[0].sets, 3);
-    assert.equal(DEFAULT_PLAN.days[0].slots[0].sets, 3);
-  });
-});
 
 describe("factories", () => {
   it("mints a distinct id every time", () => {
@@ -173,7 +134,20 @@ describe("normalizePlan", () => {
 });
 
 describe("lookups", () => {
-  const plan = defaultPlan();
+  const plan = normalizePlan({
+    id: "p1",
+    days: [
+      { id: "d1", slots: [{ id: "d1-s1", exerciseId: "bench-press" }] },
+      { id: "d2", slots: [{ id: "d2-s1", exerciseId: "back-squat" }] },
+      {
+        id: "d3",
+        slots: [
+          { id: "d3-s1", exerciseId: "bent-over-row" },
+          { id: "d3-s2", exerciseId: "seated-row" },
+        ],
+      },
+    ],
+  });
 
   it("finds a day and reports its position", () => {
     assert.equal(findDay(plan, "d2").id, "d2");
@@ -182,12 +156,12 @@ describe("lookups", () => {
   });
 
   it("finds a slot anywhere in the plan", () => {
-    assert.equal(findSlot(plan, "d3-s2").exerciseId, "bent-over-row");
+    assert.equal(findSlot(plan, "d3-s2").exerciseId, "seated-row");
     assert.equal(findSlot(plan, "nope"), null);
   });
 
   it("finds a plan by id", () => {
-    assert.equal(findPlan([plan], "plan-default"), plan);
+    assert.equal(findPlan([plan], "p1"), plan);
     assert.equal(findPlan([plan], "other"), null);
   });
 });
@@ -195,15 +169,15 @@ describe("lookups", () => {
 describe("displayName", () => {
   it("prefers what the user typed over any translation", () => {
     setLocale("en");
-    assert.equal(displayName({ name: "Push day", nameKey: "plan.defaultDays.d1" }), "Push day");
+    assert.equal(displayName({ name: "Push day", nameKey: "plans.untitled" }), "Push day");
   });
 
   it("translates a nameKey when the user has not named it", () => {
     setLocale("en");
-    assert.equal(displayName({ name: null, nameKey: "plan.defaultName" }), "Starter block");
+    assert.equal(displayName({ name: null, nameKey: "plans.untitled" }), "Untitled plan");
 
     setLocale("pt-BR");
-    assert.equal(displayName({ name: null, nameKey: "plan.defaultName" }), "Bloco inicial");
+    assert.equal(displayName({ name: null, nameKey: "plans.untitled" }), "Plano sem nome");
   });
 
   it("falls back to the catalog name for a slot, in the active locale", () => {

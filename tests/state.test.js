@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { defaultPlan, newDay, newPlan, newSlot } from "../src/plan.js";
+import { newDay, newPlan, newSlot } from "../src/plan.js";
 import {
   PREFS_KEY,
   STATE_KEY,
@@ -83,11 +83,10 @@ describe("storage keys", () => {
 });
 
 describe("a fresh install", () => {
-  it("starts on the built-in plan, so there is something to log against", () => {
+  it("starts with no plans, so the user builds their own first one", () => {
     const store = createStore(fakeStorage());
 
-    assert.equal(store.plans.length, 1);
-    assert.deepEqual(store.plans[0], defaultPlan());
+    assert.deepEqual(store.plans, []);
     assert.deepEqual(store.state.entries, {});
   });
 
@@ -551,7 +550,7 @@ describe("plan management", () => {
     const store = createStore(fakeStorage());
     const added = store.addPlan({ name: "Block B", weeks: 99, days: [] });
 
-    assert.equal(store.plans.length, 2);
+    assert.equal(store.plans.length, 1);
     assert.equal(added.weeks, 24);
     assert.equal(added.days.length, 1, "a plan always has at least one day");
   });
@@ -589,18 +588,18 @@ describe("plan management", () => {
     assert.deepEqual(store.state.setCounts, {});
   });
 
-  it("refuses to delete the last plan, which would leave nothing to log against", () => {
+  it("deletes the last remaining plan, leaving the library empty", () => {
     const store = storeWith(stateWith(testPlan()));
 
-    assert.equal(store.deletePlan("p1"), false);
-    assert.equal(store.plans.length, 1);
+    assert.equal(store.deletePlan("p1"), true);
+    assert.deepEqual(store.plans, []);
   });
 
   it("adds an unknown plan rather than silently doing nothing", () => {
     const store = createStore(fakeStorage());
     store.updatePlan(newPlan("Block B"));
 
-    assert.equal(store.plans.length, 2);
+    assert.equal(store.plans.length, 1);
   });
 });
 

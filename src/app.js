@@ -29,7 +29,7 @@ import { updateBanners, wireBanners } from "./views/banners.js";
  * the editor would be exactly wrong halfway through a session at the gym.
  */
 export function createApp({ store, elements }) {
-  let screen = "log";
+  let screen = "plans";
   /** The plan being edited: a copy, so abandoning the editor changes nothing. */
   let draft = null;
   /** Last rendered position, so only real navigation scrolls back to the top. */
@@ -143,11 +143,6 @@ export function createApp({ store, elements }) {
   }
 
   function deletePlan(plan) {
-    if (store.plans.length <= 1) {
-      window.alert(t("plans.removeLast"));
-      return;
-    }
-
     const records = countPlanEntries(store.state, plan.id);
     const message =
       records > 0
@@ -156,7 +151,7 @@ export function createApp({ store, elements }) {
     if (!window.confirm(message)) return;
 
     store.deletePlan(plan.id);
-    render(); // a now-stale prefs.planId resolves to the first plan on the way through
+    render(); // a now-stale prefs.planId resolves to the first remaining plan, or nothing if none are left
   }
 
   /**
@@ -213,7 +208,7 @@ export function createApp({ store, elements }) {
           return;
         }
         store.replaceState(imported);
-        screen = "log";
+        screen = "plans";
         render();
         window.alert(t("tools.importDone"));
       } catch {
@@ -243,13 +238,13 @@ export function createApp({ store, elements }) {
     if (screen === "plans") {
       return renderPlansView({
         store,
-        activePlanId: plan.id,
+        activePlanId: plan?.id ?? null,
         onUse: usePlan,
         onEdit: editPlan,
         onDuplicate: duplicatePlan,
         onDelete: deletePlan,
         onCreate: createPlan,
-        onBack: () => goTo("log"),
+        onBack: plan ? () => goTo("log") : null,
       });
     }
     return fragment(
@@ -275,8 +270,8 @@ export function createApp({ store, elements }) {
 
   function render() {
     const plan = activePlan();
-    const week = activeWeek(plan);
-    const day = activeDay(plan);
+    const week = plan ? activeWeek(plan) : null;
+    const day = plan ? activeDay(plan) : null;
 
     elements.appTitle.textContent = t("app.name");
     elements.appFooter.textContent = t("app.footer", { app: t("app.name") });
@@ -302,7 +297,7 @@ export function createApp({ store, elements }) {
 
     // Only real navigation jumps back to the top: a stepper re-render must leave the
     // page where the thumb left it.
-    const anchor = `${screen}|${plan.id}|${week}|${day.id}`;
+    const anchor = `${screen}|${plan?.id ?? "none"}|${week ?? ""}|${day?.id ?? ""}`;
     if (anchor !== lastAnchor) {
       window.scrollTo(0, 0);
       lastAnchor = anchor;

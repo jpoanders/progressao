@@ -85,6 +85,7 @@ export default {
 
     plans: {
       title: "Planos",
+      empty: "Nenhum plano ainda — crie um para começar a registrar.",
       manage: "Gerenciar planos",
       inUse: "Em uso",
       use: "Usar",
@@ -105,7 +106,6 @@ export default {
         other: "Excluir “{plan}”? Isso também apaga {n} registros. Não dá para desfazer.",
       },
       removeConfirmEmpty: "Excluir “{plan}”? Não dá para desfazer.",
-      removeLast: "Este é seu único plano. Crie outro antes de excluí-lo.",
     },
 
     planEditor: {
@@ -196,17 +196,6 @@ export default {
       installTitle: "Instale na tela inicial",
       installBody:
         "Safari → Compartilhar → “Adicionar à Tela de Início”. Abre em tela cheia e protege seus dados.",
-    },
-
-    plan: {
-      defaultName: "Bloco inicial",
-      defaultDays: {
-        d1: "Dia 1 — Peito + superiores",
-        d2: "Dia 2 — Pernas (quadríceps)",
-        d3: "Dia 3 — Costas + superiores",
-        d4: "Dia 4 — Pernas (posterior)",
-        d5: "Dia 5 — Walk-run",
-      },
     },
   },
 };
