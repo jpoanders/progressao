@@ -10,19 +10,20 @@
  *   slot  { id, exerciseId, name, nameKey, sets, reps }
  *
  * ── Slots are the unit of history ────────────────────────────────────────────────────
- * A slot is one placement of a catalog exercise on a day, carrying its own id. Records
- * are keyed by slot id, not by exercise id, so the same exercise can appear twice on a
- * day and reordering or renaming never orphans what was logged. Editing a plan is
- * therefore safe; only *removing* a slot discards records, which src/state.js does
- * deliberately and after confirmation.
+ * A slot is one placement of an exercise on a day — shipped or the user's own, the plan
+ * cannot tell — carrying its own id. Records are keyed by slot id, not by exercise id, so
+ * the same exercise can appear twice on a day and reordering or renaming never orphans what
+ * was logged. Editing a plan is therefore safe; only *removing* a slot discards records,
+ * which src/state.js does deliberately and after confirmation.
  *
  * ── Names ────────────────────────────────────────────────────────────────────────────
  * `name` is a string the user typed and has no translation. `nameKey` is an i18n key;
  * the app no longer ships any plan that sets one, but the field stays part of the shape.
- * displayName() resolves the two, falling back to the catalog entry's own name.
+ * displayName() resolves those two and nothing else; slotName() adds the fallback to the
+ * exercise's own name, which src/catalog.js owns because only half of them have a key.
  */
 
-import { findExercise } from "./catalog.js";
+import { exerciseLabel, findExercise } from "./catalog.js";
 import { t } from "./i18n/index.js";
 
 export const MIN_WEEKS = 1;
@@ -196,17 +197,23 @@ export function dayNumber(plan, dayId) {
 
 /**
  * What to call a plan, a day, or a slot: the user's own words if they typed any, else the
- * i18n key the shipped plan carries, else — for slots — the catalog exercise's name.
+ * i18n key the shipped plan carries, else nothing — the caller decides what to fall back to.
  */
-export function displayName(node, fallbackKey = null) {
+export function displayName(node) {
   if (node?.name) return node.name;
   if (node?.nameKey) return t(node.nameKey);
-  return fallbackKey ? t(fallbackKey) : "";
+  return "";
 }
 
-/** A slot's display name, falling back to the catalog. */
+/**
+ * A slot's display name, falling back to the exercise it places.
+ *
+ * That fallback goes through exerciseLabel rather than straight to an i18n key, because only
+ * half the exercises have one: a user-defined exercise carries a typed name instead, and
+ * looking it up would render "catalog.exercises.u-ab12cd34" on the day heading.
+ */
 export function slotName(candidate) {
-  return displayName(candidate, `catalog.exercises.${candidate.exerciseId}`);
+  return displayName(candidate) || exerciseLabel(candidate.exerciseId);
 }
 
 /**

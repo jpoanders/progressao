@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { CATALOG, makeLookup } from "../src/catalog.js";
+import { CATALOG, makeLookup, setUserExercises } from "../src/catalog.js";
 import {
   MAX_DAYS,
   MAX_SETS,
@@ -226,6 +226,33 @@ describe("displayName", () => {
       "Supino reto (barra ou halteres)");
 
     setLocale("en");
+  });
+
+  it("names a slot placing one of the user's own exercises", () => {
+    setUserExercises([SLED]);
+    try {
+      for (const tag of ["en", "pt-BR"]) {
+        setLocale(tag);
+        // There is no key to look up. Reaching for one would put the literal string
+        // "catalog.exercises.u-sled" on the day heading and in seven aria labels.
+        const slot = { exerciseId: "u-sled", name: null, nameKey: null };
+        assert.equal(slotName(slot), "Sled push", tag);
+      }
+    } finally {
+      setUserExercises([]);
+      setLocale("en");
+    }
+  });
+
+  it("still lets a slot's own name win over the exercise's", () => {
+    setUserExercises([SLED]);
+    try {
+      setLocale("en");
+      const slot = { exerciseId: "u-sled", name: "Heavy sled", nameKey: null };
+      assert.equal(slotName(slot), "Heavy sled");
+    } finally {
+      setUserExercises([]);
+    }
   });
 
   it("is empty for an unnamed day, leaving the caller to number it", () => {
