@@ -89,6 +89,7 @@ export default {
       empty: "No exercises on this day yet.",
       emptyAction: "Edit this plan",
       clear: "Clear this day's log",
+      lastLogged: "Last logged {when}",
       clearEmpty: "This day is already empty.",
       clearConfirm: {
         one: "Clear Week {week}, {day}? This deletes {n} record and resets the sets to the plan default. This cannot be undone.",

@@ -2,6 +2,7 @@ import { el, fragment } from "../dom.js";
 import { formatAge, formatNumber, roundNumber } from "../format.js";
 import { INTEGER_FIELDS, entryFields, exerciseKind } from "../catalog.js";
 import { MAX_SETS, MIN_SETS, dayLabel, slotName } from "../plan.js";
+import { lastLoggedAt } from "../state.js";
 import { setGain } from "../progress.js";
 import { activeLocale, ordinal, t } from "../i18n/index.js";
 import { numericField } from "./fields.js";
@@ -242,6 +243,20 @@ function exerciseCard({ store, planId, week, slot, onChangeSetCount }) {
   return section;
 }
 
+/**
+ * When this day was last trained, or nothing at all — an untrained day says so by having
+ * no line, rather than by carrying an empty one.
+ */
+function lastTrainedNote({ store, plan, week, day }) {
+  const at = lastLoggedAt(store.state, plan, week, day);
+  if (at == null) return null;
+
+  return el("p", {
+    class: "note note--when",
+    text: t("day.lastLogged", { when: formatAge(at, activeLocale(), Date.now(), "long") }),
+  });
+}
+
 /** One training day: a section per slot, then the destructive clear action. */
 export function renderDayView({ store, plan, week, day, onChangeSetCount, onClearDay, onEditPlan }) {
   // An empty day should offer the way out, not describe where to find it.
@@ -259,6 +274,7 @@ export function renderDayView({ store, plan, week, day, onChangeSetCount, onClea
 
   return fragment(
     el("h2", { class: "screen-title", tabIndex: -1, text: dayLabel(plan, day) }),
+    lastTrainedNote({ store, plan, week, day }),
     day.slots.length === 0
       ? empty
       : day.slots.map((slot) =>

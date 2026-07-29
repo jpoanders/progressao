@@ -105,6 +105,13 @@ describe("formatAge", () => {
     assert.equal(formatAge(NOW - 20 * MINUTE, "en", NOW), expected(-20, "minute"));
   });
 
+  it("widens on request, for callers with a whole line to spend", () => {
+    const long = new Intl.RelativeTimeFormat("en", { numeric: "always", style: "long" });
+
+    assert.equal(formatAge(NOW - 3 * DAY, "en", NOW, "long"), long.format(-3, "day"));
+    assert.notEqual(formatAge(NOW - 3 * DAY, "en", NOW, "long"), expected(-3, "day"));
+  });
+
   it("counts hours within the day", () => {
     assert.equal(formatAge(NOW - 5 * HOUR, "en", NOW), expected(-5, "hour"));
   });

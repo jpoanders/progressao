@@ -376,6 +376,26 @@ export function loggedDays(state, plan, week) {
   return days;
 }
 
+/**
+ * When a day was last trained: the newest `at` across its records, or null.
+ *
+ * "Week 3, Day 2" says nothing about whether that was Tuesday or in March, which is exactly
+ * what you need to know coming back to a block after a break. Records written before schema
+ * 3 carry no timestamp, so a day holding only those reads as untimed — the same rule the
+ * ghost row's age tag follows, and better than inventing a date.
+ */
+export function lastLoggedAt(state, plan, week, day) {
+  const slots = new Set(day.slots.map((slot) => slot.id));
+  const prefix = `${plan.id}|${week}|`;
+  let newest = null;
+
+  for (const [key, entry] of Object.entries(state.entries)) {
+    if (!key.startsWith(prefix) || !slots.has(key.split("|")[2])) continue;
+    if (Number.isFinite(entry.at) && (newest === null || entry.at > newest)) newest = entry.at;
+  }
+  return newest;
+}
+
 /** Every record belonging to a plan — what deleting it would throw away. */
 export function countPlanEntries(state, planId) {
   return Object.keys(state.entries).filter((key) => key.startsWith(`${planId}|`)).length;

@@ -275,6 +275,12 @@ footer {
 }
 
 /*
+ * Sits between the screen title and the first card. Pulled up out of the title's 24px
+ * gap so it reads as belonging to the heading, with the gap restored underneath it.
+ */
+.note--when { margin: calc(var(--s4) * -1) 0 var(--s4); }
+
+/*
  * A day chip carries the day's name, which the user writes and can therefore make long.
  * It truncates rather than pushing the rest of the row off-screen; the full name stays in
  * the accessible name, and the row scrolls, so nothing is unreachable.

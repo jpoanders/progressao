@@ -16,6 +16,7 @@ import {
   findPrevious,
   getSetCount,
   hasCustomSetCounts,
+  lastLoggedAt,
   loggedDays,
   loggedWeeks,
   newestByExercise,
@@ -499,6 +500,28 @@ describe("what has been logged", () => {
 
     assert.deepEqual(loggedDays(stale, plan, 1), new Set());
     assert.deepEqual(loggedWeeks(stale, plan), new Set());
+  });
+
+  it("reports when a day was last trained", () => {
+    const timed = stateWith(plan, {
+      entries: {
+        "p1|1|s-bench|0": { kg: 60, reps: 8, at: 3000 },
+        "p1|1|s-bench|1": { kg: 60, reps: 7, at: 5000 },
+        "p1|1|s-abs|0": { reps: 20, at: 4000 },
+        "p1|2|s-bench|0": { kg: 62, reps: 8, at: 9000 },
+      },
+    });
+
+    assert.equal(lastLoggedAt(timed, plan, 1, plan.days[0]), 5000, "the newest of the day");
+    assert.equal(lastLoggedAt(timed, plan, 2, plan.days[0]), 9000, "scoped to the week");
+    assert.equal(lastLoggedAt(timed, plan, 1, plan.days[1]), null, "a day with nothing on it");
+  });
+
+  it("reports no time for records written before timestamps existed", () => {
+    // Schema 2 records carry no `at`. Better nothing than a date we would have to invent.
+    const untimed = stateWith(plan, { entries: { "p1|1|s-bench|0": { kg: 60, reps: 8 } } });
+
+    assert.equal(lastLoggedAt(untimed, plan, 1, plan.days[0]), null);
   });
 
   it("counts a record hidden behind a reduced set count", () => {
