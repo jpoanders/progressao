@@ -531,6 +531,14 @@ footer {
 
 .add-row { display: grid; grid-template-columns: 1fr auto; gap: var(--s2); align-items: center; }
 
+/* The picker's rows are built once and hidden with .hidden as the query narrows, because the
+   filter has to redraw its own list without render() rebuilding the screen under a focused
+   input. .hidden carries !important, so the display rules here cannot defeat it. */
+.picker { display: grid; gap: var(--s2); }
+.pick-group { display: grid; gap: var(--s1); }
+.pick-group .eyebrow { margin-top: var(--s2); }
+.pick { text-align: left; }
+
 /* ── Tools ─────────────────────────────────────────────────────────────────────────── */
 
 .tools { margin-top: var(--s5); display: grid; gap: var(--s2); }
