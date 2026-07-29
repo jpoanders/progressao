@@ -1,7 +1,7 @@
 import { el, fragment } from "../dom.js";
 import { formatAge, formatNumber, roundNumber } from "../format.js";
 import { INTEGER_FIELDS, entryFields, exerciseKind } from "../catalog.js";
-import { MAX_SETS, MIN_SETS, dayNumber, displayName, slotName } from "../plan.js";
+import { MAX_SETS, MIN_SETS, dayLabel, slotName } from "../plan.js";
 import { setGain } from "../progress.js";
 import { activeLocale, ordinal, t } from "../i18n/index.js";
 import { numericField } from "./fields.js";
@@ -242,11 +242,6 @@ function exerciseCard({ store, planId, week, slot, onChangeSetCount }) {
   return section;
 }
 
-/** What to head the day with: its name, or its position when the user left it blank. */
-export function dayTitle(plan, day) {
-  return displayName(day) || t("planEditor.dayFallback", { n: dayNumber(plan, day.id) });
-}
-
 /** One training day: a section per slot, then the destructive clear action. */
 export function renderDayView({ store, plan, week, day, onChangeSetCount, onClearDay, onEditPlan }) {
   // An empty day should offer the way out, not describe where to find it.
@@ -263,7 +258,7 @@ export function renderDayView({ store, plan, week, day, onChangeSetCount, onClea
   );
 
   return fragment(
-    el("h2", { class: "screen-title", tabIndex: -1, text: dayTitle(plan, day) }),
+    el("h2", { class: "screen-title", tabIndex: -1, text: dayLabel(plan, day) }),
     day.slots.length === 0
       ? empty
       : day.slots.map((slot) =>

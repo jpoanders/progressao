@@ -3,7 +3,7 @@
 // Bump CACHE_VERSION whenever a shipped file changes, otherwise devices that already
 // installed the app keep serving the old cache forever. Every file listed in SHELL must
 // exist: cache.addAll() rejects atomically, which would leave the app uncached.
-const CACHE_VERSION = 'progression-v8';
+const CACHE_VERSION = 'progression-v9';
 const SHELL = [
   './',
   './index.html',

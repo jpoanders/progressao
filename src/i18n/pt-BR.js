@@ -22,7 +22,8 @@ export default {
       week: "Semana",
       day: "Dia",
       weekChip: "S{n}",
-      dayChip: "Dia {n}",
+      weekAria: "Semana {n}",
+      chipLogged: "{label}, registrado",
       context: "Semana {week}",
       contextPlans: "Planos",
       contextEditor: "Editando o plano",
@@ -119,7 +120,6 @@ export default {
       daysLabel: "Dias",
       addDay: "Adicionar dia",
       dayNamePlaceholder: "ex.: Peito + superiores",
-      dayFallback: "Dia {n}",
       dayNameAria: "Nome do dia {n}",
       moveUpAria: "Mover {item} para cima",
       moveDownAria: "Mover {item} para baixo",
@@ -196,6 +196,10 @@ export default {
       installTitle: "Instale na tela inicial",
       installBody:
         "Safari → Compartilhar → “Adicionar à Tela de Início”. Abre em tela cheia e protege seus dados.",
+    },
+
+    plan: {
+      dayFallback: "Dia {n}",
     },
   },
 };

@@ -26,7 +26,9 @@ export default {
       week: "Week",
       day: "Day",
       weekChip: "W{n}",
-      dayChip: "Day {n}",
+      // The chips are terse on screen and spoken in full: "W3" reads as nothing useful.
+      weekAria: "Week {n}",
+      chipLogged: "{label}, logged",
       context: "Week {week}",
       contextPlans: "Plans",
       contextEditor: "Editing plan",
@@ -131,7 +133,6 @@ export default {
       daysLabel: "Days",
       addDay: "Add day",
       dayNamePlaceholder: "e.g. Chest + upper body",
-      dayFallback: "Day {n}",
       dayNameAria: "Name of day {n}",
       moveUpAria: "Move {item} up",
       moveDownAria: "Move {item} down",
@@ -208,6 +209,11 @@ export default {
       installTitle: "Add to Home Screen",
       installBody:
         "Safari → Share → “Add to Home Screen”. It opens full screen and protects your data.",
+    },
+
+    // What a day the user never named is called — by its heading, the editor, and the chips.
+    plan: {
+      dayFallback: "Day {n}",
     },
   },
 };

@@ -1,6 +1,6 @@
 import { el, fragment, replaceChildren } from "./dom.js";
 import { isoDateStamp } from "./format.js";
-import { clampSets, clonePlan, displayName, findDay, newPlan, slotName } from "./plan.js";
+import { clampSets, clonePlan, dayLabel, displayName, findDay, newPlan, slotName } from "./plan.js";
 import {
   countDayEntries,
   countOrphans,
@@ -10,7 +10,7 @@ import {
 } from "./state.js";
 import { resolveLocale, setLocale, t } from "./i18n/index.js";
 import { renderSelectors } from "./views/selectors.js";
-import { dayTitle, renderDayView } from "./views/day.js";
+import { renderDayView } from "./views/day.js";
 import { renderPlansView } from "./views/plans.js";
 import { renderPlanEditor } from "./views/planEditor.js";
 import { renderTools } from "./views/tools.js";
@@ -109,7 +109,7 @@ export function createApp({ store, elements }) {
       window.alert(t("day.clearEmpty"));
       return;
     }
-    const message = t("day.clearConfirm", { week, day: dayTitle(plan, day), n: count });
+    const message = t("day.clearConfirm", { week, day: dayLabel(plan, day), n: count });
     if (!window.confirm(message)) return;
 
     store.clearDay(plan.id, week, day);
@@ -284,6 +284,7 @@ export function createApp({ store, elements }) {
     if (isLog) {
       renderSelectors({
         elements,
+        store,
         plan,
         week,
         dayId: day.id,

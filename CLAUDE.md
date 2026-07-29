@@ -37,7 +37,8 @@ register there.
 2. **Changing any shipped file requires bumping `CACHE_VERSION` in `sw.js`,** or installed
    devices keep serving the old cache forever. The bump has a second half: the last line of
    `tests/service-worker.test.js` asserts the version is not the *previous* literal, so move
-   that literal forward too (at `progression-v6`, the test guards against `-v5`).
+   that literal forward too — the assertion names the version you are replacing, so it has to
+   change in the same commit.
 
 ## Architecture
 
@@ -88,8 +89,13 @@ of the state code exists to preserve them:
   So renaming a day, reordering, or repeating an exercise on a day never disturbs records.
   Only removing a slot, dropping a day, or shortening a block discards them, and `app.js`
   reports the count (`countOrphans`) before it happens.
-- **Records never cross plans.** `findPrevious` walks earlier weeks within one plan and
-  stops. A new block starts clean on purpose.
+- **Stored records never cross plans; the *lookup* does, once.** Every key starts with a
+  plan id and no mutator leaves the plan it was asked about. `findPrevious` is the single
+  exception: it prefers the slot's own earlier weeks in the same plan, and only when there
+  are none falls back to the same exercise and set index in *another* plan, so week 1 of a
+  new block still shows a target to beat. The fallback never reads the plan being viewed —
+  one plan may place the same exercise twice on purpose. The cross-plan index
+  (`newestByExercise`) is a projection, memoized in the store and dropped on every write.
 - **State is self-consistent.** `normalizeState`/`normalizePlan` repair anything read from
   storage or an imported backup and prune records that fit nowhere; they never throw.
   Any new field must be handled there, or it will be silently dropped on the next load.
@@ -97,6 +103,12 @@ of the state code exists to preserve them:
 Preferences hold ids that can go stale. They are resolved at render time in `app.js`
 (`activePlan`/`activeDay`/`activeWeek`) with a fallback — do not add defensive id checks at
 each call site.
+
+**There may be no plans at all.** A fresh install starts empty and the last plan can be
+deleted, so `activePlan()` returns undefined and `render()` passes `plan`/`week`/`day` as
+null. Plans is the landing screen and the only one reachable in that state (the log screen
+is entered by using a plan, and its Back button is withheld when there is none), but any
+new screen has to hold up with nothing selected.
 
 ### i18n
 
