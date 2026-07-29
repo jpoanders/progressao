@@ -85,6 +85,7 @@ export default {
 
     plans: {
       title: "Planos",
+      empty: "Nenhum plano ainda — crie um para começar a registrar.",
       manage: "Gerenciar planos",
       inUse: "Em uso",
       use: "Usar",
@@ -105,7 +106,6 @@ export default {
         other: "Excluir “{plan}”? Isso também apaga {n} registros. Não dá para desfazer.",
       },
       removeConfirmEmpty: "Excluir “{plan}”? Não dá para desfazer.",
-      removeLast: "Este é seu único plano. Crie outro antes de excluí-lo.",
     },
 
     planEditor: {

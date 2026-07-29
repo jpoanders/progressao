@@ -97,6 +97,7 @@ export default {
 
     plans: {
       title: "Plans",
+      empty: "No plans yet — create one to start logging.",
       manage: "Manage plans",
       inUse: "In use",
       use: "Use",
@@ -117,7 +118,6 @@ export default {
         other: "Delete “{plan}”? This also deletes {n} logged records. This cannot be undone.",
       },
       removeConfirmEmpty: "Delete “{plan}”? This cannot be undone.",
-      removeLast: "This is your only plan. Create another one before deleting it.",
     },
 
     planEditor: {
