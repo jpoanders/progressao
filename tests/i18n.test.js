@@ -11,7 +11,7 @@ import {
   setLocale,
   t,
 } from "../src/i18n/index.js";
-import { CATALOG, GROUPS } from "../src/catalog.js";
+import { CATALOG, ENTRY_FIELDS, GROUPS } from "../src/catalog.js";
 
 const PLURAL_CATEGORIES = new Set(["zero", "one", "two", "few", "many", "other"]);
 
@@ -85,6 +85,33 @@ describe("locale key parity", () => {
     }
   });
 
+  // Parity cannot see these. The day view builds them at render time out of catalog data, so
+  // a new entry field or a new `kind` needs a key that no other test in this file would miss:
+  // both locales stay identically incomplete, and a user exercise is not in CATALOG. `t()`
+  // returns the key on a miss, so the result is a raw string in the UI and a green suite.
+  it("resolves every key the day view builds out of catalog data", () => {
+    const kinds = [...new Set(CATALOG.map((exercise) => exercise.kind))];
+    const keys = [
+      ...ENTRY_FIELDS.flatMap((field) => [
+        `exercise.columns.${field}`,
+        `exercise.fields.${field}.placeholder`,
+        `exercise.fields.${field}.aria`,
+      ]),
+      ...kinds.map((kind) => `exercise.pair.${kind}`),
+      // setGain reports these three and never `time` — a slower minute is not a gain the app
+      // claims. All three take { n }, which has to be passed here as the view passes it: a
+      // plural entry with no count resolves to the key itself.
+      ...["kg", "dist", "reps"].map((field) => `exercise.gain.${field}`),
+    ];
+
+    for (const tag of Object.keys(LOCALES)) {
+      setLocale(tag);
+      for (const key of keys) {
+        assert.notEqual(t(key, { n: 1 }), key, `${tag}: ${key} would render as a raw key`);
+      }
+    }
+    setLocale(DEFAULT_LOCALE);
+  });
 });
 
 describe("plural entries", () => {
