@@ -224,6 +224,7 @@ export default {
       importDone: "Progresso importado com sucesso.",
       importInvalid: "Arquivo inválido. Selecione um backup JSON exportado pelo {app}.",
       readError: "Não foi possível ler o arquivo.",
+      exportFailed: "Não foi possível compartilhar o backup. Tente de novo.",
     },
 
     settings: {
