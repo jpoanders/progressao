@@ -256,10 +256,20 @@ export function createApp({ store, elements }) {
 
   // ── Backup ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Stamped after the file has been produced, not before: the stamp is what silences the
+   * reminder banner, so stamping first meant a Blob or object-URL failure left the banner quiet
+   * with nothing downloaded. A synthetic anchor cannot report whether the browser accepted the
+   * download, so reaching the click is as close to "on success" as this path gets.
+   *
+   * The file still carries the moment it was written rather than the previous export, so
+   * restoring a fresh backup does not land on a device that thinks it is overdue — hence the
+   * one `now` shared by the serialized copy and the stamp.
+   */
   function exportBackup() {
-    store.markExported();
-
-    const blob = new Blob([JSON.stringify(store.state, null, 2)], { type: "application/json" });
+    const now = Date.now();
+    const backup = { ...store.state, lastExport: now };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = el("a", { href: url, download: `progression-backup-${isoDateStamp()}.json` });
 
@@ -268,6 +278,7 @@ export function createApp({ store, elements }) {
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 
+    store.markExported(now);
     render(); // refreshes the "last backup" note and clears the reminder banner
   }
 
