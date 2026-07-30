@@ -193,10 +193,10 @@ records, and a day whose records predate `at`.
 Three deviations from what is described below. **The registry alone was not safe enough:**
 anything that can delete — `normalizeState`, `normalizePlan`, `normalizeEntry` — takes an
 explicit lookup argument instead, because `parseBackup` normalizes a candidate file *before*
-the import confirm (`app.js:337`), so a list installed during normalization would survive a
-cancelled import and the next plan edit would delete every custom slot. The registry is kept
-for the read path only. **`CATALOG` stayed the shipped 22** rather than becoming a merged
-list, which is what let `tests/i18n.test.js` go untouched — the parity worry below never
+the import confirm (`handleImportFile` in `app.js`), so a list installed during normalization
+would survive a cancelled import and the next plan edit would delete every custom slot. The
+registry is kept for the read path only. **`CATALOG` stayed the shipped 22** rather than becoming
+a merged list, which is what let `tests/i18n.test.js` go untouched — the parity worry below never
 fired. And **the picker became a filter over one-tap rows** rather than a `<select>` with a
 filter field, since a native wheel cannot be filtered at all.
 
@@ -517,10 +517,10 @@ the exported file proves it — but the app has shown a person an empty workout 
 it told them their data was safe. That is a worse first impression than a failed export.
 
 It is not a reload: after a reload the app lands on Plans, since `screen` is a closure variable
-initialized to `"plans"` and never persisted (`src/app.js:35`). Landing back on the day view means
-the document was restored from the page cache with this closure and this DOM intact — and the
-measurement above says the inputs inside it were intact too. Nothing was emptied; a surface was
-stale.
+initialized to `"plans"` and never persisted (the first line of `createApp`). Landing back on the
+day view means the document was restored from the page cache with this closure and this DOM
+intact — and the measurement above says the inputs inside it were intact too. Nothing was
+emptied; a surface was stale.
 
 **Why `pageshow` and not something narrower.** The restore hands back a live document whose paint is
 not trustworthy, so the repair has to touch the DOM. `render()` already exists to rebuild `<main>`
