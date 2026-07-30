@@ -2,7 +2,7 @@ import { el, fragment } from "../dom.js";
 import { formatAge, formatNumber, roundNumber } from "../format.js";
 import { INTEGER_FIELDS, entryFields, exerciseKind } from "../catalog.js";
 import { MAX_SETS, MIN_SETS, dayLabel, slotName } from "../plan.js";
-import { lastLoggedAt } from "../state.js";
+import { fillableFields, lastLoggedAt } from "../state.js";
 import { setGain } from "../progress.js";
 import { activeLocale, ordinal, t } from "../i18n/index.js";
 import { numericField } from "./fields.js";
@@ -74,8 +74,10 @@ function columnHeadings(fields) {
  * in, which is why there is no longer a separate copy button. The gain badge is written
  * straight into the DOM rather than through render(), because render() must never be
  * called from a text input's handler.
+ *
+ * Returns its fill alongside its node, so the card above can drive every row at once.
  */
-function setRow({ store, planId, week, slot, setIndex }) {
+function setRow({ store, planId, week, slot, setIndex, onEntryChange }) {
   const fields = entryFields(slot.exerciseId);
   const kind = exerciseKind(slot.exerciseId);
   const previous = store.findPrevious(planId, week, slot.id, setIndex);
@@ -130,11 +132,13 @@ function setRow({ store, planId, week, slot, setIndex }) {
     el("span", { class: "ghost-week", text: tagText() }),
   );
 
+  const currentEntry = () => store.getEntry(planId, week, slot.id, setIndex);
+
   const gainBadge = el("span", { class: "gain", "aria-hidden": "true" });
   let shown = "";
 
   const refreshGain = () => {
-    const gain = setGain(previous, store.getEntry(planId, week, slot.id, setIndex), slot.exerciseId);
+    const gain = setGain(previous, currentEntry(), slot.exerciseId);
     const text = gain
       ? t(`exercise.gain.${gain.field}`, {
           n: roundNumber(gain.delta, { integer: INTEGER_FIELDS.has(gain.field) }),
@@ -159,20 +163,33 @@ function setRow({ store, planId, week, slot, setIndex }) {
       ariaLabel: t(`exercise.fields.${field}.aria`, { set: setIndex + 1 }),
       describedBy: previous ? ghostId(field) : null,
       integer: INTEGER_FIELDS.has(field),
-      read: () => store.getEntry(planId, week, slot.id, setIndex)?.[field] ?? null,
+      read: () => currentEntry()?.[field] ?? null,
       write: (value) => store.setEntryField(planId, week, slot.id, setIndex, field, value),
-      onChange: refreshGain,
+      onChange: () => {
+        refreshGain();
+        onEntryChange?.();
+      },
     }),
   );
 
-  ghost.addEventListener("click", () => {
+  /**
+   * Copies the previous record in. `keepTyped` is what the card-level button passes: it fills
+   * the empty boxes and leaves anything already logged alone. The ghost row passes nothing and
+   * overwrites, which is the whole point of tapping one row.
+   */
+  const fill = ({ keepTyped = false } = {}) => {
     if (!previous) return;
+    const open = keepTyped ? new Set(fillableFields(previous, currentEntry(), fields)) : null;
+
     fields.forEach((field, index) => {
       if (previous[field] == null) return;
+      if (open && !open.has(field)) return;
       store.setEntryField(planId, week, slot.id, setIndex, field, previous[field]);
       controls[index].sync();
     });
-  });
+  };
+
+  ghost.addEventListener("click", () => fill());
 
   const inputs = el(
     "div",
@@ -187,7 +204,14 @@ function setRow({ store, planId, week, slot, setIndex }) {
   );
 
   refreshGain();
-  return el("div", { class: "set" }, ghost, inputs);
+
+  return {
+    node: el("div", { class: "set" }, ghost, inputs),
+    fill,
+    // Read live rather than captured: the inputs write through without a render(), so the
+    // card's button would otherwise stay enabled after the last box was filled.
+    canFill: () => fillableFields(previous, currentEntry(), fields).length > 0,
+  };
 }
 
 function setStepper({ slot, count, onChangeSetCount }) {
@@ -203,20 +227,38 @@ function setStepper({ slot, count, onChangeSetCount }) {
 
   return el(
     "div",
-    { class: "ex-actions" },
-    el(
-      "div",
-      { class: "stepper" },
-      stepButton("−", -1, "exercise.removeSetAria", count <= MIN_SETS),
-      el("span", { class: "stepper-label", text: t("exercise.setCount", { n: count }) }),
-      stepButton("+", +1, "exercise.addSetAria", count >= MAX_SETS),
-    ),
+    { class: "stepper" },
+    stepButton("−", -1, "exercise.removeSetAria", count <= MIN_SETS),
+    el("span", { class: "stepper-label", text: t("exercise.setCount", { n: count }) }),
+    stepButton("+", +1, "exercise.addSetAria", count >= MAX_SETS),
   );
 }
 
 function exerciseCard({ store, planId, week, slot, onChangeSetCount }) {
   const count = store.getSetCount(planId, week, slot);
   const fields = entryFields(slot.exerciseId);
+
+  // Every set at once. The ghost rows are per-set by design, and four of them is four taps
+  // with a phone in your other hand before you can start editing anything.
+  let rows = [];
+  const fillButton = el("button", {
+    type: "button",
+    class: "btn",
+    text: t("exercise.fillSets"),
+    "aria-label": t("exercise.fillSetsAria", { exercise: slotName(slot) }),
+    on: { click: () => rows.forEach((row) => row.fill({ keepTyped: true })) },
+  });
+
+  // Filling a row syncs its inputs, which reports back here, so the button turns itself off
+  // the moment there is nothing left to fill — and on again if a box is cleared by hand.
+  const refreshFill = () => {
+    fillButton.disabled = !rows.some((row) => row.canFill());
+  };
+
+  rows = Array.from({ length: count }, (_, setIndex) =>
+    setRow({ store, planId, week, slot, setIndex, onEntryChange: refreshFill }),
+  );
+  refreshFill();
 
   const section = el(
     "section",
@@ -231,11 +273,14 @@ function exerciseCard({ store, planId, week, slot, onChangeSetCount }) {
     el(
       "div",
       { class: "sets" },
-      Array.from({ length: count }, (_, setIndex) =>
-        setRow({ store, planId, week, slot, setIndex }),
-      ),
+      rows.map((row) => row.node),
     ),
-    setStepper({ slot, count, onChangeSetCount }),
+    el(
+      "div",
+      { class: "ex-actions" },
+      setStepper({ slot, count, onChangeSetCount }),
+      fillButton,
+    ),
   );
 
   // Set once here so the headings, every ghost row and every input row share one template.

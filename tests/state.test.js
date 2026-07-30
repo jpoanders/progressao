@@ -15,6 +15,7 @@ import {
   createStore,
   emptyState,
   entryKey,
+  fillableFields,
   findPrevious,
   getSetCount,
   hasCustomSetCounts,
@@ -606,6 +607,40 @@ describe("what has been logged", () => {
     const hidden = stateWith(plan, { entries: { "p1|1|s-bench|7": { kg: 60, reps: 8 } } });
 
     assert.deepEqual(loggedDays(hidden, plan, 1), new Set(["day-a"]));
+  });
+});
+
+describe("what the previous record could still fill in", () => {
+  const STRENGTH = ["kg", "reps"];
+
+  it("names nothing when there is no previous record to fill from", () => {
+    assert.deepEqual(fillableFields(null, null, STRENGTH), []);
+  });
+
+  it("names every field of an untouched set", () => {
+    assert.deepEqual(fillableFields({ kg: 60, reps: 8 }, null, STRENGTH), ["kg", "reps"]);
+  });
+
+  it("leaves a field that already holds a number alone", () => {
+    // What the exercise-wide button acts on: the empty boxes, never a typed one.
+    assert.deepEqual(fillableFields({ kg: 60, reps: 8 }, { kg: 65 }, STRENGTH), ["reps"]);
+  });
+
+  it("names nothing once the set is complete", () => {
+    assert.deepEqual(fillableFields({ kg: 60, reps: 8 }, { kg: 65, reps: 6 }, STRENGTH), []);
+  });
+
+  it("skips a field the previous record itself never held", () => {
+    assert.deepEqual(fillableFields({ kg: 60 }, null, STRENGTH), ["kg"]);
+  });
+
+  it("reads the fields it is given, so cardio fills distance and time", () => {
+    const previous = { dist: 3, time: 20 };
+    assert.deepEqual(fillableFields(previous, { dist: 4 }, ["dist", "time"]), ["time"]);
+  });
+
+  it("treats a zero as a number, not as an empty box", () => {
+    assert.deepEqual(fillableFields({ kg: 0, reps: 8 }, { kg: 0 }, STRENGTH), ["reps"]);
   });
 });
 

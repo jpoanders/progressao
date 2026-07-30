@@ -250,6 +250,20 @@ export function entryHasData(entry) {
 }
 
 /**
+ * Which of a set's fields a previous record could fill in: it has a number and today's entry
+ * does not. `fields` is passed rather than read from ENTRY_FIELDS because which fields a set
+ * logs depends on the exercise (see entryFields in src/catalog.js).
+ *
+ * The exercise-wide fill button acts on exactly these, and the per-set ghost row deliberately
+ * does not — tapping one row is precise enough to mean "replace this", while one tap that
+ * refilled a whole exercise would discard typed numbers, and nothing in this app can undo it.
+ */
+export function fillableFields(previous, entry, fields) {
+  if (!previous) return [];
+  return fields.filter((field) => previous[field] != null && entry?.[field] == null);
+}
+
+/**
  * Sort comparator, most recent first: timestamp, then plan order, then week.
  *
  * The two fallbacks are not decoration. Every record written before schema 3 has no
