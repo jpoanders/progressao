@@ -303,18 +303,22 @@ function lastTrainedNote({ store, plan, week, day }) {
 }
 
 /** One training day: a section per slot, then the destructive clear action. */
-export function renderDayView({ store, plan, week, day, onChangeSetCount, onClearDay, onEditPlan }) {
+export function renderDayView({ store, plan, week, day, onChangeSetCount, onClearDay, onEditDay }) {
+  // The way to this day's card in the editor. Adding an exercise to today used to mean
+  // finding the plan, the editor and then the right day among all of them.
+  const editDay = el("button", {
+    type: "button",
+    class: "btn btn--full",
+    text: t("day.editDay"),
+    on: { click: () => onEditDay(day) },
+  });
+
   // An empty day should offer the way out, not describe where to find it.
   const empty = el(
     "div",
     { class: "tools" },
     el("p", { class: "note", text: t("day.empty") }),
-    el("button", {
-      type: "button",
-      class: "btn btn--full",
-      text: t("day.emptyAction"),
-      on: { click: () => onEditPlan(plan) },
-    }),
+    editDay,
   );
 
   return fragment(
@@ -325,6 +329,10 @@ export function renderDayView({ store, plan, week, day, onChangeSetCount, onClea
       : day.slots.map((slot) =>
           exerciseCard({ store, planId: plan.id, week, slot, onChangeSetCount }),
         ),
+    // Below the sets rather than above them: the top of this screen is for logging, and
+    // this is where "add another exercise" belongs. It keeps its own block instead of
+    // sharing a row with the destructive action below.
+    day.slots.length === 0 ? null : el("div", { class: "tools" }, editDay),
     day.slots.length === 0
       ? null
       : el(

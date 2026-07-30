@@ -256,12 +256,20 @@ function exercisePicker({ day, picker, onPicker, onChange }) {
   );
 }
 
-function dayCard({ draft, day, index, picker, onPicker, onChange }) {
+/**
+ * `focused` is the day the editor was opened on. It carries the same outline the in-use plan
+ * gets, and the tabIndex the caller needs to move focus here instead of the screen title —
+ * which is what scrolls it into view. Kept for as long as the editor is open rather than
+ * cleared after the first render: it goes on saying which day you came from while you work.
+ */
+function dayCard({ draft, day, index, focused, picker, onPicker, onChange }) {
   const label = dayLabel(draft, day);
 
   return el(
     "section",
-    { class: "card card--day" },
+    focused
+      ? { class: "card card--day card--active", tabIndex: -1 }
+      : { class: "card card--day" },
     el(
       "div",
       { class: "day-head" },
@@ -313,9 +321,10 @@ function dayCard({ draft, day, index, picker, onPicker, onChange }) {
 
 /**
  * Renders the editor for `draft`. `onChange` re-renders; `onDone` hands the draft back to
- * the caller to be saved.
+ * the caller to be saved. `focusDayId` is the day to land on, or null when the editor was
+ * not opened from one.
  */
-export function renderPlanEditor({ draft, picker, onPicker, onChange, onDone }) {
+export function renderPlanEditor({ draft, picker, focusDayId, onPicker, onChange, onDone }) {
   return fragment(
     el(
       "div",
@@ -362,7 +371,17 @@ export function renderPlanEditor({ draft, picker, onPicker, onChange, onDone }) 
     ),
 
     el("div", { class: "eyebrow", text: t("planEditor.daysLabel") }),
-    draft.days.map((day, index) => dayCard({ draft, day, index, picker, onPicker, onChange })),
+    draft.days.map((day, index) =>
+      dayCard({
+        draft,
+        day,
+        index,
+        focused: day.id === focusDayId,
+        picker,
+        onPicker,
+        onChange,
+      }),
+    ),
 
     el(
       "div",

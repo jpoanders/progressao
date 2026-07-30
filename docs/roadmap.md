@@ -1,7 +1,7 @@
 # Roadmap — the next steps, in order
 
 **Date:** 2026-07-29
-**Status:** steps 1–5 shipped; 6–8 outstanding
+**Status:** steps 1–6 shipped; 7 and 8 outstanding
 
 Eight steps, each one shippable on its own and each leaving the app in a working state. They
 are ordered to be done one at a time, top to bottom: later steps assume earlier ones have
@@ -232,15 +232,25 @@ the new key.
 
 ## Step 6: Reach the editor from the day you are looking at
 
-**Status: not started.**
+**Status: shipped.** One `editor = { returnTo, dayId }` variable in `app.js`, mirroring
+`exercisesReturn`, carries both halves: Done goes back where the editor was opened from, and
+`renderPlanEditor` takes a `focusDayId` that marks that day's card with the existing
+`.card--active` outline.
 
-**The problem.** Adding an exercise to today costs five screens: Log → Manage plans → Edit →
-scroll to the right day → add → Done. The empty-day state already offers the shortcut
-(`src/views/day.js:263-273`); a day with exercises on it does not.
+**The scroll is the focus move.** `render()` already moves focus on a screen change, so the
+arrival card takes that instead of the screen title and comes into view for free — no
+`scrollIntoView`, and focus and viewport stay together. It only works in that order: the block
+runs after the `scrollTo(0, 0)` in the anchor check, and focusing the heading as well would
+snap the page back to the top.
 
-**What changes.** The recommended version is the cheap one: an "Edit this day" action on the
-day view that opens the editor, scrolled to that day's card. `onEditPlan` is already plumbed
-through `renderDayView` for the empty state, so this is mostly reuse.
+**One deviation.** There is a single button, not two: the empty day's "Edit this plan" became
+the same deep-linked "Edit this day", which is the truth about where it lands, so
+`day.emptyAction` is gone. The picker is deliberately *not* pre-opened on arrival — it would
+push the day's own rows out of view and is wrong when you came to reorder, for one tap saved.
+
+**The problem it fixed.** Adding an exercise to today cost five screens: Log → Manage plans →
+Edit → scroll to the right day → add → Done. The empty-day state offered the shortcut
+(`src/views/day.js:263-273`); a day with exercises on it did not.
 
 **The alternative, deliberately not taken.** A genuinely in-place "add exercise to today"
 would mean week-scoped slots — because a plan is the template for *every* week, so adding an
@@ -250,9 +260,14 @@ is buildable. It is not worth building yet: it doubles what a plan means, and th
 evidence from actually using the app that the shortcut above is insufficient. Revisit only
 if the deep-link still feels wrong after a few weeks of real use.
 
-**Test surface.** None automated. Hand-check that the editor opens on the right day and that
-Done returns somewhere sensible — note that `savePlan` currently always lands on Plans
-(`src/app.js:173`), which is the wrong destination when you arrived from the log screen.
+**Test surface.** None automated, as predicted — it is navigation state and DOM all the way
+down. Hand-checked in a headless browser at 320px in both locales: the arrival card, the focus
+move, the Done destination from all three entry points (a day, Plans, a new plan), and
+reordering or deleting the day you came from.
+
+**Found while checking, not fixed here.** With five days the header's chip rows overflow a
+320px viewport — the whole page scrolls sideways by 15px. It predates this step (measured
+identically at `1bcdfdb`) and lives in `.selectors`, which step 6 does not touch.
 
 ---
 

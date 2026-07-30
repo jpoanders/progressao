@@ -92,7 +92,8 @@ export default {
 
     day: {
       empty: "No exercises on this day yet.",
-      emptyAction: "Edit this plan",
+      // Names the day, not the plan: it opens the editor on this day's card.
+      editDay: "Edit this day",
       clear: "Clear this day's log",
       lastLogged: "Last logged {when}",
       clearEmpty: "This day is already empty.",

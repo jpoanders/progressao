@@ -505,6 +505,9 @@ footer {
 }
 .card--active { border-color: var(--ink); }
 .card--day { display: grid; gap: var(--s3); }
+/* The day the editor was opened on is focused programmatically, like .screen-title — a ring
+   on a card nobody tabbed to reads as a bug. The outline above already marks it. */
+.card--day:focus { outline: none; }
 
 .badge {
   font-family: "Archivo", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;

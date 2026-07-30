@@ -77,7 +77,7 @@ export default {
 
     day: {
       empty: "Nenhum exercício neste dia ainda.",
-      emptyAction: "Editar este plano",
+      editDay: "Editar este dia",
       clear: "Limpar o registro deste dia",
       lastLogged: "Registrado {when}",
       clearEmpty: "Este dia já está vazio.",
