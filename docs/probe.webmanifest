@@ -1,0 +1,10 @@
+{
+  "name": "Progression probe",
+  "short_name": "Probe",
+  "start_url": "./probe.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#14161a"
+}
