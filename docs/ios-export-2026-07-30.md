@@ -212,8 +212,10 @@ Worth doing on the next pass, none of it blocking the write-up:
   back in the app: still filled, or blank? Both routes come back through the same history entry,
   so if saving the file leaves the numbers alone then the story above is wrong.
 - **The decisive DOM read**, which needs a console the phone does not have without a Mac: after
-  `✕`, compare `input.value` with `input.getAttribute("value")`. A throwaway page served from
-  `docs/` would answer it.
+  `✕`, compare `input.value` with `input.getAttribute("value")`. `docs/probe.html` does exactly
+  that — three inputs built property-only, attribute-only and both, snapshotted automatically on
+  `pageshow` — and reports `canShare({ files })` in the same visit. Delete it once both are
+  answered.
 - **Opening in Safari via the preview's compass** and returning to the app. Different again from
   both cases above: it leaves the app entirely rather than navigating within it.
 - Whether the `✕` return preserves *everything else* the closure held, or only the screen: scroll
