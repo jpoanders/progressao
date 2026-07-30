@@ -31,10 +31,15 @@ data. Two consequences shape the sequence:
   which is why it came before the polish steps rather than after them.
 
 Step 7 is a launch blocker rather than an urgent fix: nothing is at stake until there is
-something to lose, but the app cannot be handed to a real person before it is done. **Step 9 is
-the harder blocker of the two** now that step 7's verification came back — export already works
-on iOS, whereas step 9 makes a logged session *look* deleted on the target platform, and looking
-deleted is what makes someone stop trusting a training log.
+something to lose, but the app cannot be handed to a real person before it is done. Step 9 looked
+like the harder blocker of the two when it was found — it makes a logged session *look* deleted on
+the target platform, and looking deleted is what makes someone stop trusting a training log — but
+**step 7 goes first, because step 9's only known trigger is step 7's own export path.** Nothing
+else in the app leaves the document, and backgrounding the app does not reproduce it (checked
+2026-07-30). If step 7 ships `navigator.share`, which opens a native sheet without navigating, the
+one route into step 9 may close on its own. That does not retire step 9 — the latent fault in
+`numericField` is real and any future navigation re-opens it — but it stops being the thing a user
+meets first.
 
 ## Applies to every step
 
@@ -432,15 +437,27 @@ emptied.
 is the input's default value, is never set. Any WebKit form-state restore or reset drops the field
 to that empty default while the store stays correct, and the next `render()` repaints it.
 
-**What changes.** Either make the default value real — set the attribute alongside the property,
-inside `numericField` where all three assignments live — or re-`render()` on
-`pageshow`/`visibilitychange`, which repairs whatever else the restore clobbers too. Decide by
-first reproducing it **without** export in the picture (open in Safari from the preview's compass
-and come back, or just background the app), because if any navigation-away does it then this is a
-`fields.js` bug and not an export one.
+**What changes.** Make the default value real: set the `value` attribute alongside the property,
+inside `numericField` where all three assignments live. That is the whole fix, it needs no event
+listener, and it is correct regardless of which WebKit path does the resetting. The alternative —
+re-`render()` on `pageshow` when `event.persisted` — stays a fallback for the case where the
+attribute turns out not to be what iOS restores from; it is broader but only fires on the
+page-cache path.
 
-**Independent of step 7**, and worth doing first if step 7 grows a share sheet: `navigator.share`
-is another way to leave and return, so a fix here is a fix for that path in advance.
+**The trigger was narrowed on 2026-07-30, and it is step 7's own path.** Backgrounding the app for
+several minutes and returning does **not** reproduce it: the app comes back on the day view with
+every field filled, so freeze/resume is not the mechanism and `visibilitychange` has nothing to
+repair. What is left is a session-history navigation — the anchor click takes the document to the
+`blob:` URL and `✕` comes back — which is why the closure survives while the inputs reset. Since
+`render()` never leaves the document and the app has no outbound links, **the export preview is
+currently the only way to reach this**, which is why step 7 is sequenced first: a `navigator.share`
+export never navigates, and would close the route. Fix `numericField` anyway — the fault is latent,
+not gone, and the next feature that opens a document re-exposes it.
+
+**Confirm before or while fixing** (neither needs a fix in hand): that export → `✕` blanks the
+fields *every* time, since it has been seen once; and that export → **Salvar em Arquivos** → back
+does it too. If saving leaves the numbers alone, the history-navigation story is wrong and the
+trigger is the dismissal specifically.
 
 **Test surface.** The attribute-vs-property rule is `dom.js`, which has no DOM tests and cannot get
 any — but "does `numericField` set both" is decidable and could be pinned if `fields.js` ever gets a
