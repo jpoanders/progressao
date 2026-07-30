@@ -265,9 +265,11 @@ down. Hand-checked in a headless browser at 320px in both locales: the arrival c
 move, the Done destination from all three entry points (a day, Plans, a new plan), and
 reordering or deleting the day you came from.
 
-**Found while checking, not fixed here.** With five days the header's chip rows overflow a
-320px viewport — the whole page scrolls sideways by 15px. It predates this step (measured
-identically at `1bcdfdb`) and lives in `.selectors`, which step 6 does not touch.
+**Found while checking, fixed in a follow-up.** With five days the header's chip rows overflowed
+a 320px viewport — the whole page scrolled sideways. It predated this step (measured identically
+at `1bcdfdb`): `.selectors` is a grid, and a bare `1fr` track is `minmax(auto, 1fr)`, so the
+track grew to the chip row's min-content instead of letting `.seg` scroll. `minmax(0, 1fr)` is
+the whole fix. At the limit — ten days with long names — the row wanted 940px inside a 288px box.
 
 ---
 
