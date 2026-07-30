@@ -355,7 +355,7 @@ export function createApp({ store, elements }) {
         day,
         onChangeSetCount: changeSetCount,
         onClearDay: clearDay,
-        onEditPlan: editPlan,
+        onEditDay: (fromDay) => editPlan(plan, { returnTo: "log", dayId: fromDay.id }),
       }),
       renderTools({
         store,
