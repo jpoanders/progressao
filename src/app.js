@@ -280,7 +280,15 @@ export function createApp({ store, elements }) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 
     store.markExported(now);
-    render(); // refreshes the "last backup" note and clears the reminder banner
+    // The refresh of the "last backup" note and the reminder banner is deferred, not skipped. By
+    // this line the anchor may already have started a navigation: on installed iOS `link.click()`
+    // hands the document to a full-screen preview of the file. Rebuilding <main> — and reflowing
+    // the whole page as the banner's `display: none` goes — one frame before that document freezes
+    // is the leading explanation for the fields coming back blank from the preview (roadmap step
+    // 9). A macrotask puts the render past the navigation instead: timers are paused while a
+    // document is frozen and resume on restore. The stamp above stays synchronous so it survives
+    // even if this never runs.
+    setTimeout(render, 0);
   }
 
   function openImportPicker() {
