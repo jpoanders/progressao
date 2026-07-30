@@ -296,6 +296,23 @@ check that preceded it — iPhone 14 / iOS 26.3.1, full trace in `docs/ios-expor
 planned. The problem statement is rewritten below rather than deleted, for the same reason the
 other shipped steps keep theirs.
 
+**Confirmed on the device, `progression-v21`, 2026-07-30** — same iPhone 14 / iOS 26.3.1, installed
+to the home screen. Four things were checked and all four held:
+
+- **Fazer backup agora** opens the ordinary iOS share sheet immediately. No full-screen file
+  preview, so the app never disappears behind a document — which also means step 9's restore route
+  is not used at all, and the day's fields did not blank at any point.
+- **Cancelling leaves "Último backup" on its old value.** This is the half of the step that could not
+  be built until the device proved iOS reports a cancel: the stamp no longer claims a backup that
+  does not exist.
+- **Salvar em Arquivos moves the stamp to the current time**, so the resolve branch is reached.
+- **The round trip still works:** clear a day, restore the file just saved, and the sets come back.
+
+One thing the check surfaced that is not a bug: the reminder banner could not be observed, because
+with a stamp an hour old it is correctly absent (`overdue` is `> WEEK_MS`). The line sitting directly
+above "Último backup" is `tools.note`, which is permanent and says what restoring costs — easy to
+mistake for the banner, and worth knowing before writing another device protocol that asks about it.
+
 **Three deviations from the plan, all deliberate.**
 
 - **The gate is `isStandalone() && canShare({ files })`, not `canShare` alone.** Capability alone
@@ -390,8 +407,9 @@ the reminder immediately. Both halves come out of `backupPayload` for that reaso
 **Test surface.** `backupPayload` has a suite in `tests/state.test.js` — the stamp, the previous
 stamp being replaced rather than carried, the filename dating from the same moment as the contents,
 and the output round-tripping through `parseBackup`. Everything above it involves `File`,
-`navigator.share` and the DOM, so it was hand-checked on a real iPhone in standalone mode and driven
-in headless Chrome over CDP, where the whole branch turns out to be reachable: `isStandalone()`
+`navigator.share` and the DOM, so it was hand-checked on a real iPhone in standalone mode (the run
+recorded at the top of this step) and driven in headless Chrome over CDP, where the whole branch
+turns out to be reachable: `isStandalone()`
 reads `navigator.standalone`, and both share APIs can be replaced with `Object.defineProperty`. That
 check covers four cases — share resolved (the right `File`, the stamp, the note and banner, and
 *no* download), cancelled (`AbortError`: no stamp, banner still reminding, nothing said), failed
