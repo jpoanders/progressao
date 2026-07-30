@@ -460,6 +460,16 @@ export function countPlanEntries(state, planId) {
 }
 
 /**
+ * The two totals the import confirmation compares. Records come off the keys rather than by
+ * summing countPlanEntries: normalizeState prunes any record that fits nowhere and both sides of
+ * that confirm have been through it, so the totals agree with the per-plan counts by
+ * construction — which is what the test asserts.
+ */
+export function summarizeState(state) {
+  return { plans: state.plans.length, records: Object.keys(state.entries).length };
+}
+
+/**
  * What deleting one of the user's exercises would cost: every slot that places it, the plans
  * those sit in, and the records logged on them. Counted across all weeks, because the slot is
  * removed from the plan itself and not just from the week on screen.

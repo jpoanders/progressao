@@ -27,6 +27,7 @@ import {
   normalizeState,
   parseBackup,
   setCountKey,
+  summarizeState,
 } from "../src/state.js";
 
 function fakeStorage(initial = {}) {
@@ -525,6 +526,63 @@ describe("counting records", () => {
     const custom = normalizeState(stateWith(plan, { setCounts: { "p1|1|s-bench": 5 } }));
     assert.equal(hasCustomSetCounts(custom, "p1", 1, plan.days[0]), true);
     assert.equal(hasCustomSetCounts(custom, "p1", 2, plan.days[0]), false);
+  });
+});
+
+describe("summarizeState", () => {
+  const plan = testPlan();
+  const entries = {
+    "p1|1|s-bench|0": { kg: 60, reps: 8 },
+    "p1|1|s-abs|0": { reps: 20 },
+    "p1|2|s-bench|0": { kg: 62, reps: 8 },
+  };
+
+  it("reports the plans and the records a state holds", () => {
+    const state = normalizeState(stateWith(plan, { entries }));
+    assert.deepEqual(summarizeState(state), { plans: 1, records: 3 });
+  });
+
+  it("counts records across every plan, not just the first", () => {
+    const state = normalizeState({
+      plans: [plan, { ...testPlan(), id: "p2" }],
+      entries: { ...entries, "p2|1|s-bench|0": { kg: 70, reps: 5 } },
+    });
+
+    assert.deepEqual(summarizeState(state), { plans: 2, records: 4 });
+  });
+
+  /**
+   * Counting keys is only correct while every record belongs to a plan, which is what
+   * normalizeState guarantees and what both sides of the import confirmation have been through.
+   * A record hiding outside every plan would inflate the number the user is shown.
+   */
+  it("agrees with countPlanEntries summed over the plans", () => {
+    const state = normalizeState({
+      plans: [plan, { ...testPlan(), id: "p2" }],
+      entries: { ...entries, "p2|1|s-abs|0": { reps: 15 } },
+    });
+
+    const perPlan = state.plans.reduce((total, p) => total + countPlanEntries(state, p.id), 0);
+    assert.equal(summarizeState(state).records, perPlan);
+  });
+
+  it("is all zeroes for a fresh install", () => {
+    assert.deepEqual(summarizeState(emptyState()), { plans: 0, records: 0 });
+  });
+
+  it("counts an imported file as parseBackup leaves it, not as the file wrote it", () => {
+    const file = JSON.stringify({
+      version: STATE_VERSION,
+      lastExport: 1000,
+      exercises: [],
+      plans: [plan],
+      entries: { ...entries, "gone|1|s-bench|0": { kg: 99, reps: 1 } },
+      setCounts: {},
+    });
+
+    // The record keyed to a plan the file does not carry is pruned on the way in, so the
+    // confirmation promises three records and importing delivers three.
+    assert.deepEqual(summarizeState(parseBackup(file)), { plans: 1, records: 3 });
   });
 });
 

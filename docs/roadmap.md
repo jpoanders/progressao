@@ -1,7 +1,7 @@
 # Roadmap — the next steps, in order
 
 **Date:** 2026-07-29
-**Status:** steps 1–6 shipped; 7 and 8 outstanding
+**Status:** steps 1–6 and 8 shipped; 7 outstanding
 
 Eight steps, each one shippable on its own and each leaving the app in a working state. They
 are ordered to be done one at a time, top to bottom: later steps assume earlier ones have
@@ -321,24 +321,51 @@ unless you listen for `window` errors.
 
 ## Step 8: Say what an import is about to replace
 
-**Status: not started.**
+**Status: shipped.** `summarizeState` in `src/state.js` and `importMessage` in `src/app.js`.
 
-**The problem.** Restoring a backup replaces everything and the confirmation
-(`src/app.js:206`) does not say what "everything" currently is. Restore an old file onto a
-device with newer sessions on it and they are gone, with nothing having warned you what you
-were trading.
+**The problem.** Restoring a backup replaced everything and the confirmation did not say what
+"everything" currently was. Restore an old file onto a device with newer sessions on it and they
+are gone, with nothing having warned you what you were trading.
 
-**What changes.** `parseBackup` already returns a fully normalized state before anything is
-written, so both sides are countable at that moment. The confirmation names them: what is on
-the device now, and what the file holds. `countPlanEntries` and the plan count give the
-numbers; both need plural-safe keys, not hand-written singular/plural.
+**What changed.** `parseBackup` already returns a fully normalized state before anything is
+written, so both sides are countable at that moment — and the file's own numbers are never
+trusted, only the normalized ones. The confirmation names what is on the device now, what the
+file holds, and when the file was made. `lastExport` travels inside the file, and step 7's
+ordering fix is what makes that date trustworthy: it is now the moment the file was written.
+
+Two things went beyond the letter of this step, both deliberate:
+
+- **One key per line, not one template per case.** Dated or not, and empty device or not, is four
+  whole templates to keep in step in every locale. Each key is still a complete sentence — no key
+  is a fragment of a clause and no punctuation is glued on in code — and the conditional lines
+  then cost nothing. `{plans}` and `{records}` are filled with the plural fragments
+  `plans.planCount` (new, beside the existing `weekCount`/`dayCount`/`recordCount`) and
+  `plans.recordCount`, so each of the four counts gets its own `Intl.PluralRules` category. The
+  `{slots} day(s) across {plans} plan(s)` fudge in `exercises.removeConfirm` is not repeated.
+- **A device with nothing on it gets a softer message** ("This device has no plans or records
+  yet… Restore it?"). Restoring onto an empty device costs nothing, and leading with a REPLACE
+  warning there teaches people to dismiss the dialog. Mirrors `removeConfirm`/`removeConfirmEmpty`.
+  The test is `plans === 0 && records === 0`: a plan with no records still has something to lose.
+
+`summarizeState` counts records off the entry keys rather than by summing `countPlanEntries`,
+which is only correct while every record belongs to a plan — `normalizeState` guarantees it and
+both sides of this confirm have been through it. That invariant is what its test pins.
 
 A real merge is not proposed. Record keys are plan-scoped, so merging two files means
 reconciling plan ids, and there is no correct answer when the same plan has diverged on two
 devices. Telling the truth before replacing is the honest version of this feature.
 
-**Test surface.** None new — the counting functions are already covered. The change is the
-message.
+**Test surface.** `summarizeState` has a suite in `tests/state.test.js`; key parity and the
+plural-entries suite in `tests/i18n.test.js` cover the new keys with no edit needed. The message
+itself is `app.js`, so it was checked in headless Chrome over CDP: `DOM.setFileInputFiles` on
+`#import-file` feeds the hidden input a real file and fires `change` itself, and `window.confirm`
+and `window.alert` are replaced in the page to record their text instead of blocking — 21 checks
+across both locales, the dated and undated file, the fresh device, and the singular counts.
+
+One trap worth knowing if that script is rewritten: pre-serialize the two localStorage values and
+pass them as string literals. Calling `JSON.stringify` in the page as well stores a quoted JSON
+string, `normalizePrefs` reads it as no prefs at all, and the locale under test silently becomes
+whatever the browser prefers — which is how a first run of that check "passed" entirely in pt-BR.
 
 ---
 

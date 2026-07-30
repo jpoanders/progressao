@@ -1,5 +1,5 @@
 import { el, fragment, replaceChildren } from "./dom.js";
-import { isoDateStamp } from "./format.js";
+import { formatDateTime, isoDateStamp } from "./format.js";
 import { clampSets, clonePlan, dayLabel, displayName, findDay, newPlan, slotName } from "./plan.js";
 import {
   countDayEntries,
@@ -8,8 +8,9 @@ import {
   countPlanEntries,
   hasCustomSetCounts,
   parseBackup,
+  summarizeState,
 } from "./state.js";
-import { resolveLocale, setLocale, t } from "./i18n/index.js";
+import { activeLocale, resolveLocale, setLocale, t } from "./i18n/index.js";
 import { renderSelectors } from "./views/selectors.js";
 import { renderDayView } from "./views/day.js";
 import { renderPlansView } from "./views/plans.js";
@@ -286,6 +287,45 @@ export function createApp({ store, elements }) {
     elements.importFile.click();
   }
 
+  /**
+   * What restoring costs, said before the tap that does it. Both sides are countable here because
+   * parseBackup has already normalized the candidate — the file's own numbers are never trusted.
+   *
+   * Assembled line by line rather than from one template per case: a file the app did not stamp
+   * has no date to show, and a device with nothing on it is not being warned about a loss, which
+   * as whole templates would be four of them in every locale.
+   */
+  function importMessage(deviceState, fileState) {
+    const counts = (state) => {
+      const { plans, records } = summarizeState(state);
+      return {
+        plans: t("plans.planCount", { n: plans }),
+        records: t("plans.recordCount", { n: records }),
+      };
+    };
+
+    // A plan with no records still has something to lose, so it gets the warning.
+    const { plans, records } = summarizeState(deviceState);
+    const empty = plans === 0 && records === 0;
+
+    const lines = empty
+      ? [t("tools.importEmptyDevice"), "", t("tools.importFileOnly", counts(fileState))]
+      : [
+          t("tools.importReplaces"),
+          "",
+          t("tools.importCurrent", counts(deviceState)),
+          t("tools.importFile", counts(fileState)),
+        ];
+
+    if (fileState.lastExport) {
+      const when = formatDateTime(fileState.lastExport, activeLocale());
+      lines.push(t("tools.importDate", { when }));
+    }
+    lines.push("", empty ? t("tools.importRestore") : t("tools.importContinue"));
+
+    return lines.join("\n");
+  }
+
   function handleImportFile(event) {
     const input = event.target;
     const file = input.files?.[0];
@@ -295,7 +335,7 @@ export function createApp({ store, elements }) {
     reader.onload = () => {
       try {
         const imported = parseBackup(String(reader.result));
-        if (!window.confirm(t("tools.importConfirm"))) {
+        if (!window.confirm(importMessage(store.state, imported))) {
           input.value = "";
           return;
         }
