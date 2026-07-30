@@ -10,6 +10,12 @@
 > was built to answer and both results are recorded here. And the blank-fields question it could not
 > settle **was settled: it is a paint bug**, measured from inside the app. Roadmap step 9 has the
 > reading and the fix; everything below stands as it was written.
+>
+> A third note, same day: the two candidate directions this note left open (**What this changes
+> about the fix**, below) were settled by building the first. `navigator.share({ files })` now runs whenever the app
+> is installed, and `markExported()` waits for the sheet to resolve — so the stamp described below as
+> lying no longer can. Roadmap step 7 records what shipped and why the gate is standalone-and-capable
+> rather than capable alone.
 
 **Device.** iPhone 14, iOS 26.3.1, iOS UI in Portuguese. Installed from
 https://jpoanders.github.io/progression/ via Safari → Adicionar à Tela de Início, launched
