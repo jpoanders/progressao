@@ -1,12 +1,14 @@
 # Roadmap — the next steps, in order
 
 **Date:** 2026-07-30
-**Status:** steps 1–6 and 8 shipped; 7 outstanding (its desktop half verified, iOS unchecked)
+**Status:** steps 1–6 and 8 shipped; 7 outstanding, and 9 added by what its verification found
+(see `docs/ios-export-2026-07-30.md`)
 
-Eight steps, each one shippable on its own and each leaving the app in a working state. They
+Nine steps, each one shippable on its own and each leaving the app in a working state. They
 are ordered to be done one at a time, top to bottom: later steps assume earlier ones have
 landed, and doing them out of order means reworking the same code twice (noted per step
-where it matters).
+where it matters). Steps 1–8 were planned as a set; step 9 was found on the device on
+2026-07-30 while verifying step 7, and is appended rather than renumbered into place.
 
 Each step carries its own status line. Shipped steps are kept rather than deleted: the
 problem statement is why the code looks the way it does, and the next person reading it
@@ -29,7 +31,10 @@ data. Two consequences shape the sequence:
   which is why it came before the polish steps rather than after them.
 
 Step 7 is a launch blocker rather than an urgent fix: nothing is at stake until there is
-something to lose, but the app cannot be handed to a real person before it is done.
+something to lose, but the app cannot be handed to a real person before it is done. **Step 9 is
+the harder blocker of the two** now that step 7's verification came back — export already works
+on iOS, whereas step 9 makes a logged session *look* deleted on the target platform, and looking
+deleted is what makes someone stop trusting a training log.
 
 ## Applies to every step
 
@@ -276,31 +281,60 @@ the whole fix. At the limit — ten days with long names — the row wanted 940p
 
 ## Step 7: Make backup export work in an installed iOS app
 
-**Status: not started**, except for the `markExported()` ordering fix below, which shipped on
-its own because it was independent of whatever the iOS check turns up. The share-sheet work and
-the iPhone verification are still open.
+**Status: verified, not built.** The `markExported()` ordering fix below shipped on its own. The
+iPhone check is now done — iPhone 14 / iOS 26.3.1, full trace in
+`docs/ios-export-2026-07-30.md` — and it **falsified the premise of this step**, so what remains
+to build is a different thing than what was planned. Rewritten below rather than deleted, for the
+same reason the shipped steps are kept.
 
-**The problem.** `exportBackup` (`src/app.js:270`) builds a blob URL and clicks a synthetic
-`<a download>`. In an iOS home-screen PWA there is no download chrome, and that anchor has
-historically been a dead end. The install banner (`src/views/banners.js:53`) actively pushes
-users into precisely that mode, and the README's whole data-safety story — WebKit evicts
-localStorage after about 7 days — rests on export working there.
+**What the check found.** The anchor is not a dead end. `link.click()` in standalone mode replaces
+the app with a full-screen preview showing the correct filename
+(`progression-backup-2026-07-30.json`, `JSON - 3 KB`), and its share sheet — reached either from
+the bottom-bar icon or the "Abrir com…" link, which lead to the same place — offers **Salvar em
+Arquivos**, AirDrop, E-mail and the rest. The file that came off the phone re-imports byte-identical
+through `parseBackup`, and its `lastExport` is the export moment, five minutes after the last set,
+so the shared-`now` property holds on WebKit too.
 
-**Verify before building.** This is a claim about iOS behaviour, not about this code. Install
-the app to a real home screen, tap Back up now, and see what happens. If the file lands, this
-step is closed for free.
+So iOS export *works today*, three taps down a screen that advertises none of them. It failed in
+practice anyway: the person running the check wrote `exportBackup` and still did not find "Salvar em
+Arquivos", so nothing reached Files and Restore could not be tested at all. **The problem is
+discoverability, not capability.**
 
-The desktop half of that is already answered: on 2026-07-30 a real (not headless) Chrome on Linux
+**The problem, restated.** Two things are now wrong on the one platform whose storage gets evicted
+after ~7 days, and which the install banner (`src/views/banners.js:53`) actively pushes people onto:
+
+- The export's own screen does not say how to keep the file, and the app vanishes behind it.
+- `markExported()` stamps when the *preview* opens. Dismiss it with `✕` and the app has recorded
+  a backup, gone quiet about the reminder, and produced no file. That is the ordinary outcome of
+  the ordinary gesture — no longer a theoretical limit of the anchor.
+
+**What to build — the second point is now the stronger argument.** Feature-detect
+`navigator.canShare({ files })` and hand the JSON to the share sheet, keeping the anchor for every
+other platform. Building the JSON is synchronous, so the call stays inside the tap's user
+activation, which Safari requires. It gains no new *destinations* — it is the same sheet the preview
+already reaches — so justify it on the two things it does gain: one tap instead of three
+undiscovered ones, and a promise that rejects on cancel, which is the only way `markExported()` can
+become truthful on iOS. Confirm `canShare({ files })` is true for a JSON file on the device before
+committing to it; the cheap alternative is a standalone-and-iOS-only line naming the two taps,
+which fixes discoverability and leaves the stamp lying.
+
+**The round trip is confirmed.** Salvar em Arquivos → Restaurar backup restores: the picker opens
+in standalone mode, the saved `.json` is selectable through `accept="application/json,.json"`, and
+the import reported success. So **nothing here has to be built for iOS to work** — what is left is
+discoverability and a stamp that tells the truth. `README.md`'s "downloads … keep it wherever you
+like" is wrong for installed iOS and wants a sentence either way.
+
+**Two things the check found that are not this step** — the day's inputs coming back blank after
+the preview is dismissed (now step 9) and the post-import jump to Plans (deliberate; the reasoning
+is recorded in the findings note so it does not get "fixed").
+
+**The desktop half was answered first**, and it is the fallback the iOS work must not disturb: on
+2026-07-30 a real (not headless) Chrome on Linux
 was driven through the whole flow and the file landed — `progression-backup-2026-07-30.json`, no
 download prompt, and the on-screen "Last backup" stamp equal to the file's own `lastExport` to the
-second. So the anchor path and the shared-`now` property both hold in a real browser, and whatever
-the iPhone turns up, the fallback it would fall back *to* is known good. Nothing about WebKit
-follows from this: Chrome is not the engine under suspicion.
-
-**What changes if it doesn't.** Feature-detect `navigator.canShare({ files })` and hand the
-JSON to the share sheet — Files, Mail, iCloud Drive — keeping the anchor as the fallback for
-every other platform. Building the JSON is synchronous, so the share call stays inside the
-tap's user activation, which Safari requires.
+second. So the anchor path and the shared-`now` property both hold in a real browser. Nothing about
+WebKit followed from this — Chrome was never the engine under suspicion — but it did mean the
+iPhone check could not be confounded by a bug in the export itself.
 
 **One thing to fix either way — shipped.** `markExported()` used to be called *before* the
 download was attempted, so the "last backup" timestamp was stamped and the reminder banner went
@@ -314,8 +348,8 @@ so the file still describes the moment it was written. Without that, a restored 
 arrive claiming the export before it and could show the reminder immediately.
 
 **Test surface.** None automated (`Blob`, `navigator.share`, and the DOM are all involved).
-Hand-check on a real iPhone in standalone mode, plus a desktop browser to confirm the
-fallback path still downloads.
+Hand-check on a real iPhone in standalone mode — done for the current code on 2026-07-30, and to be
+redone for whatever ships — plus a desktop browser to confirm the fallback path still downloads.
 
 The ordering fix was checked in headless Chrome over CDP instead, which is enough for a
 download: `Browser.setDownloadBehavior` with `behavior: "allow"` makes the synthetic click
@@ -376,6 +410,42 @@ string, `normalizePrefs` reads it as no prefs at all, and the locale under test 
 whatever the browser prefers — which is how a first run of that check "passed" entirely in pt-BR.
 
 ---
+
+## Step 9: The day's inputs come back blank after a navigation away
+
+**Status: not started.** Added 2026-07-30, found by step 7's iPhone check rather than by design;
+full trace in `docs/ios-export-2026-07-30.md`.
+
+**The problem.** Export a backup on installed iOS, dismiss the full-screen preview with `✕`, and
+you land back on the day you were on with **every exercise field empty**. Move to another day and
+back and the numbers return. Nothing was lost — the records are in `localStorage` throughout, and
+the exported file proves it — but the app has shown a person an empty workout at the exact moment
+it told them their data was safe. That is a worse first impression than a failed export.
+
+It is not a reload: after a reload the app lands on Plans, since `screen` is a closure variable
+initialized to `"plans"` and never persisted (`src/app.js:35`). The DOM survived; its inputs were
+emptied.
+
+**Why it happens.** `numericField` passes `value: show()` to `el()` (`src/views/fields.js:33`), and
+`el()` assigns unhyphenated keys **as properties** (`src/dom.js:31`) — as do the `blur` handler and
+`sync()`. So the displayed number exists only as the IDL property and the `value` *attribute*, which
+is the input's default value, is never set. Any WebKit form-state restore or reset drops the field
+to that empty default while the store stays correct, and the next `render()` repaints it.
+
+**What changes.** Either make the default value real — set the attribute alongside the property,
+inside `numericField` where all three assignments live — or re-`render()` on
+`pageshow`/`visibilitychange`, which repairs whatever else the restore clobbers too. Decide by
+first reproducing it **without** export in the picture (open in Safari from the preview's compass
+and come back, or just background the app), because if any navigation-away does it then this is a
+`fields.js` bug and not an export one.
+
+**Independent of step 7**, and worth doing first if step 7 grows a share sheet: `navigator.share`
+is another way to leave and return, so a fix here is a fix for that path in advance.
+
+**Test surface.** The attribute-vs-property rule is `dom.js`, which has no DOM tests and cannot get
+any — but "does `numericField` set both" is decidable and could be pinned if `fields.js` ever gets a
+seam. Otherwise: hand-check on the iPhone, and confirm the desktop fill/blur/`sync` behaviour is
+unchanged, since `sync()` is what the ghost row and step 3's card-level fill both call.
 
 ## Not scheduled, and why
 
