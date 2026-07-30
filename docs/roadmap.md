@@ -275,8 +275,9 @@ the whole fix. At the limit — ten days with long names — the row wanted 940p
 
 ## Step 7: Make backup export work in an installed iOS app
 
-**Status: not started**, including the `markExported()` ordering fix below, which is a
-one-line change independent of whatever the iOS check turns up.
+**Status: not started**, except for the `markExported()` ordering fix below, which shipped on
+its own because it was independent of whatever the iOS check turns up. The share-sheet work and
+the iPhone verification are still open.
 
 **The problem.** `exportBackup` (`src/app.js:178`) builds a blob URL and clicks a synthetic
 `<a download>`. In an iOS home-screen PWA there is no download chrome, and that anchor has
@@ -293,14 +294,28 @@ JSON to the share sheet — Files, Mail, iCloud Drive — keeping the anchor as 
 every other platform. Building the JSON is synchronous, so the share call stays inside the
 tap's user activation, which Safari requires.
 
-**One thing to fix either way.** `markExported()` is called *before* the download is
-attempted (`src/app.js:179`), so the "last backup" timestamp is stamped and the reminder
-banner goes quiet whether or not a file was ever produced. With a share sheet — which the
-user can cancel — that becomes actively wrong. Stamp on success only.
+**One thing to fix either way — shipped.** `markExported()` used to be called *before* the
+download was attempted, so the "last backup" timestamp was stamped and the reminder banner went
+quiet whether or not a file was ever produced. It now runs after the anchor click, which is as
+close to "on success" as a synthetic `<a download>` gets — the anchor cannot report whether the
+browser accepted the file, and that is exactly why the share sheet, which *can* be cancelled,
+still needs its own handling here.
+
+The serialized copy takes the same `now` as the stamp (`{ ...store.state, lastExport: now }`),
+so the file still describes the moment it was written. Without that, a restored backup would
+arrive claiming the export before it and could show the reminder immediately.
 
 **Test surface.** None automated (`Blob`, `navigator.share`, and the DOM are all involved).
 Hand-check on a real iPhone in standalone mode, plus a desktop browser to confirm the
 fallback path still downloads.
+
+The ordering fix was checked in headless Chrome over CDP instead, which is enough for a
+download: `Browser.setDownloadBehavior` with `behavior: "allow"` makes the synthetic click
+actually write a file, and breaking `URL.createObjectURL` on purpose covers the failure the fix
+is about. Two things to know if that gets rewritten — the app lands on Plans, so Backup is not
+on screen until "Back to training" is clicked; and an exception thrown inside a click handler
+does not propagate out of `.click()`, so a broken export looks exactly like a missing button
+unless you listen for `window` errors.
 
 ---
 
