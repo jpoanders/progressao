@@ -57,8 +57,6 @@ export function createApp({ store, elements }) {
   let lastAnchor = null;
   /** Last rendered screen, so only a screen change moves focus. */
   let lastScreen = null;
-  /** Whether the last pagehide said the document was going into the page cache (step 9). */
-  let lastPagehide = null;
 
   /**
    * Preferences hold ids, not references, and an id can go stale — a plan deleted, a day
@@ -486,56 +484,6 @@ export function createApp({ store, elements }) {
     }
   }
 
-  /**
-   * TEMPORARY — a measurement, not a feature, and it comes out in its own commit as soon as step 9
-   * is explained. It is the one reading nobody has been able to take: whether the fields that *look*
-   * blank after the export preview are actually empty in the DOM, which splits a stale paint from
-   * lost form state. `docs/probe.html` could answer that for a standalone page but not for the app.
-   *
-   * Deliberately not routed through `t()`, against the rule for every other string in here: two
-   * locales' worth of keys for text that must not outlive one device run would be the wrong trade,
-   * and translating a diagnostic invites keeping it. Read before the repairing render(), so the
-   * numbers describe the restored DOM rather than the rebuilt one.
-   */
-  function reportRestore() {
-    const inputs = [...elements.content.querySelectorAll("input")];
-    const held = inputs.filter((input) => input.value !== "").length;
-    const detail = inputs
-      .slice(0, 3)
-      .map((input, i) => `[${i}] value=${JSON.stringify(input.value)} ` +
-        `attr=${JSON.stringify(input.getAttribute("value"))}`);
-
-    const lines = [
-      "step 9 — restored from the page cache",
-      `pagehide persisted = ${lastPagehide}`,
-      `inputs under <main> = ${inputs.length}`,
-      `still held a value = ${held} / ${inputs.length}`,
-      ...detail,
-      inputs.length > 0 && held === inputs.length
-        ? "→ every box had its number: the bug is PAINT"
-        : "→ boxes came back empty: the bug is STATE",
-    ];
-
-    const panel = el(
-      "div",
-      {},
-      ...lines.map((line) => el("div", { text: line })),
-      el("button", {
-        type: "button",
-        text: "dismiss",
-        on: { click: () => panel.remove() },
-      }),
-    );
-    // setAttribute rather than assigning `style`, which is what dom.js would do for an unhyphenated
-    // key — and this has to hold up on the one browser the readout exists to be read on.
-    panel.setAttribute(
-      "style",
-      "position:fixed;inset:0 0 auto 0;z-index:99;padding:12px;background:#14161a;color:#fff;" +
-        "font:12px/1.5 ui-monospace,monospace;white-space:pre-wrap",
-    );
-    document.body.append(panel);
-  }
-
   function start() {
     const preferred = navigator.languages ?? [navigator.language];
     // Resolved but not persisted: without an explicit choice the app keeps following the
@@ -557,19 +505,14 @@ export function createApp({ store, elements }) {
 
     elements.importFile.addEventListener("change", handleImportFile);
 
-    // Roadmap step 9: coming back from the export preview leaves the day's fields looking empty,
-    // and three explanations for that are now dead — freeze/resume, the missing `value` attribute,
-    // and rendering into the departing document. What every one of them shared is that the restore
-    // keeps this closure and this DOM alive, which is why rebuilding from state repairs it: it is
-    // what moving to another day and back already does, and it does not depend on knowing which of
-    // paint or form state went wrong. `persisted` is the guard — a fresh load has rendered already.
-    window.addEventListener("pagehide", (event) => {
-      lastPagehide = event.persisted;
-    });
+    // Restoring from the page cache — on iOS, dismissing the export's full-screen file preview —
+    // hands back a live document whose *paint* is stale: the day's inputs still hold their numbers
+    // and the screen shows empty boxes. Measured on the device, roadmap step 9. Rebuilding from
+    // state is what forces the surface to be repainted, and it is what moving to another day and
+    // back has always done by accident. `persisted` is the guard: an ordinary load has just
+    // rendered, and this must not cost it a second one.
     window.addEventListener("pageshow", (event) => {
-      if (!event.persisted) return;
-      reportRestore();
-      render();
+      if (event.persisted) render();
     });
 
     render();
