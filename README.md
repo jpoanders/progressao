@@ -176,8 +176,10 @@ about 7 days without visiting the site**. Two defences:
 
 1. **Install the app to the home screen** (steps above). In standalone mode this automatic
    eviction is drastically reduced.
-2. **Export a backup now and then.** The app shows a gentle reminder once the last backup
-   is more than ~7 days old.
+2. **Export a backup now and then.** The app shows a gentle reminder — a dismissible banner
+   above the header — once the last backup is more than ~7 days old. Back up today and you will
+   not see it; it is not the "Restoring replaces everything on this device." line, which is
+   permanent and sits in the Backup section itself.
 
 ## Backing up your progress
 
@@ -187,12 +189,17 @@ At the bottom of any screen there is a **Backup** section:
   progress. In a browser tab it downloads, and you keep it wherever you like (email it to
   yourself, iCloud Drive, Google Drive…).
 
-  **With the app installed to the home screen it opens the system share sheet instead** — choose
-  **Save to Files**, AirDrop, Mail, or anything else in there. This is the one platform where a
-  download has nowhere to go: without the sheet, iOS replaces the app with a full-screen preview of
-  the file, and dismissing that keeps nothing. A file saved from the sheet is selectable by
-  **Restore a backup**, so the round trip works. Cancel the sheet and nothing is saved — and
-  nothing is recorded either, so the reminder keeps reminding you.
+  **With the app installed to the home screen it opens the iOS share sheet instead** — the ordinary
+  one, straight away, with **Save to Files**, AirDrop and Mail in it. Pick a destination and the file
+  is kept and "Last backup" moves to the current time. **Cancel it and nothing is saved — and
+  nothing is recorded either**, so the previous date stands and the reminder keeps reminding you. A
+  file saved that way is selectable by **Restore a backup**: clear a day, restore, and the sets come
+  back. All of that verified on an installed iPhone 14 running iOS 26.
+
+  The sheet is there because on that one platform a download has nowhere to go. Without it, iOS
+  replaces the whole app with a full-screen preview of the file, and the only way to keep anything
+  is a share button three taps down that nobody finds — dismissing the preview keeps no file at all.
+  `docs/ios-export-2026-07-30.md` records what the device did, if you want the long version.
 - **Restore a backup** — pick a backup file to **restore everything**. Restoring replaces
   current progress, and it asks first, naming the trade: how many plans and records are on this
   device now, how many are in the file, and when the file was made. A device with nothing on it
