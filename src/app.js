@@ -35,6 +35,12 @@ export function createApp({ store, elements }) {
   /** The plan being edited: a copy, so abandoning the editor changes nothing. */
   let draft = null;
   /**
+   * Where Done returns to, and which day the editor was opened on — both set when it opens.
+   * The editor is reachable from Plans and from the day you are looking at, and being put
+   * down on Plans when you arrived mid-session from the log is the wrong place to land.
+   */
+  let editor = { returnTo: "plans", dayId: null };
+  /**
    * Which day's exercise picker is open, and what has been typed into its filter. Where you
    * are looking rather than part of the plan, so it lives here beside `screen` and never
    * reaches the draft. Only one picker is open at a time, so one query is enough.
@@ -196,12 +202,16 @@ export function createApp({ store, elements }) {
     // half-built entry behind in the library.
     draft = newPlan(t("plans.newName"));
     picker = { dayId: null, query: "" };
+    // A plan that does not exist yet has no day to have come from.
+    editor = { returnTo: "plans", dayId: null };
     goTo("editor");
   }
 
-  function editPlan(plan) {
+  /** `dayId` is the day to land on — the log screen passes the one you were looking at. */
+  function editPlan(plan, { returnTo = "plans", dayId = null } = {}) {
     draft = clonePlan(plan);
     picker = { dayId: null, query: "" };
+    editor = { returnTo, dayId };
     goTo("editor");
   }
 
@@ -237,9 +247,11 @@ export function createApp({ store, elements }) {
     if (store.prefs.planId === saved.id && !findDay(saved, store.prefs.day)) {
       store.setPref("day", saved.days[0].id);
     }
+    const returnTo = editor.returnTo;
     draft = null;
     picker = { dayId: null, query: "" };
-    goTo("plans");
+    editor = { returnTo: "plans", dayId: null };
+    goTo(returnTo);
   }
 
   // ── Backup ─────────────────────────────────────────────────────────────────────────
@@ -306,6 +318,7 @@ export function createApp({ store, elements }) {
       return renderPlanEditor({
         draft,
         picker,
+        focusDayId: editor.dayId,
         onPicker: setPicker,
         onChange: render,
         onDone: savePlan,
@@ -396,8 +409,18 @@ export function createApp({ store, elements }) {
     // reader user stranded at the top of the document. Moving to the new heading tells
     // them where they landed. Not done on every render: a stepper tap must not steal
     // focus from the input the thumb is in.
+    //
+    // The editor prefers the day card you arrived on, which is also how it gets scrolled
+    // to — focus() brings its element into view, and this runs after the scrollTo above, so
+    // the card wins. Focusing the heading as well would snap the page back to the top.
+    // The selector is compound on purpose: .card--active alone also marks the plan in use.
     if (screen !== lastScreen) {
-      if (lastScreen !== null) elements.content.querySelector(".screen-title")?.focus();
+      if (lastScreen !== null) {
+        const target =
+          elements.content.querySelector(".card--day.card--active") ??
+          elements.content.querySelector(".screen-title");
+        target?.focus();
+      }
       lastScreen = screen;
     }
   }
