@@ -286,8 +286,8 @@ the whole fix. At the limit — ten days with long names — the row wanted 940p
 
 ## Step 7: Make backup export work in an installed iOS app
 
-**Status: verified, not built.** The `markExported()` ordering fix below shipped on its own. The
-iPhone check is now done — iPhone 14 / iOS 26.3.1, full trace in
+**Status: verified and unblocked, not built.** The `markExported()` ordering fix below shipped on its
+own. The iPhone check is now done — iPhone 14 / iOS 26.3.1, full trace in
 `docs/ios-export-2026-07-30.md` — and it **falsified the premise of this step**, so what remains
 to build is a different thing than what was planned. Rewritten below rather than deleted, for the
 same reason the shipped steps are kept.
@@ -319,9 +319,15 @@ other platform. Building the JSON is synchronous, so the call stays inside the t
 activation, which Safari requires. It gains no new *destinations* — it is the same sheet the preview
 already reaches — so justify it on the two things it does gain: one tap instead of three
 undiscovered ones, and a promise that rejects on cancel, which is the only way `markExported()` can
-become truthful on iOS. Confirm `canShare({ files })` is true for a JSON file on the device before
-committing to it; the cheap alternative is a standalone-and-iOS-only line naming the two taps,
-which fixes discoverability and leaves the stamp lying.
+become truthful on iOS.
+
+**Both halves of that are now confirmed on the device** (2026-07-30, `docs/probe.html`):
+`canShare({ files: [json] })` is **true** for an `application/json` `File`, and backing out of the
+sheet rejects with **`AbortError`** — so the cancel is detectable and `markExported()` belongs in the
+resolve branch. The sheet also fires no `pagehide`/`pageshow`, so unlike the anchor it never takes
+the app through a restore. Nothing is left to check before building it; the cheap alternative — a
+standalone-and-iOS-only line naming the two taps — is now the fallback only if the share path turns
+out to misbehave in use, and it would leave the stamp lying.
 
 **The round trip is confirmed.** Salvar em Arquivos → Restaurar backup restores: the picker opens
 in standalone mode, the saved `.json` is selectable through `accept="application/json,.json"`, and
@@ -431,18 +437,29 @@ It is not a reload: after a reload the app lands on Plans, since `screen` is a c
 initialized to `"plans"` and never persisted (`src/app.js:35`). The DOM survived; its inputs were
 emptied.
 
-**Why it happens.** `numericField` passes `value: show()` to `el()` (`src/views/fields.js:33`), and
-`el()` assigns unhyphenated keys **as properties** (`src/dom.js:31`) — as do the `blur` handler and
-`sync()`. So the displayed number exists only as the IDL property and the `value` *attribute*, which
-is the input's default value, is never set. Any WebKit form-state restore or reset drops the field
-to that empty default while the store stays correct, and the next `render()` repaints it.
+**Why it happens: not known, and the obvious answer has been tested and is wrong.** The reading from
+the code was that `numericField` assigns `value` as a property only (`src/views/fields.js:33` through
+`src/dom.js:31`), leaving the `value` *attribute* — the input's default — empty for a WebKit
+form-state restore to land on. `docs/probe.html` put that on the device: property-only,
+attribute-only and both, in a standalone page, exported through the same synthetic anchor, dismissed
+with `✕`. The restore happened (`pagehide persisted=true` → `pageshow persisted=true`, closure
+intact) and **the property-only input came back holding its value**. Tested twice, once with the
+inputs rebuilt right after the click the way `render()` does. So the attribute theory is dead: do
+not "fix" `numericField` on the strength of it.
 
-**What changes.** Make the default value real: set the `value` attribute alongside the property,
-inside `numericField` where all three assignments live. That is the whole fix, it needs no event
-listener, and it is correct regardless of which WebKit path does the resetting. The alternative —
-re-`render()` on `pageshow` when `event.persisted` — stays a fallback for the case where the
-attribute turns out not to be what iOS restores from; it is broader but only fires on the
-page-cache path.
+**What is left.** The probe reads the DOM; the report was visual. The likeliest remaining explanation
+is that the values were never gone — only unpainted. `exportBackup` rebuilds `<main>` synchronously
+after `link.click()`, while the navigation is already in flight and one frame before the document
+freezes; a restored snapshot that missed that update would show empty boxes over correct state, and
+the first interaction would repair it, which is what moving to another day and back did. If that is
+it, the fix is not in `fields.js` at all — it is not re-rendering into a document on its way out
+(drop the `render()` call, or defer it past the navigation), or forcing a repaint on `pageshow`.
+
+**Next measurement, before any code.** Run the probe's `Export → then ✕` and report whether the three
+boxes *looked* filled, next to what the log says they contained. Blank on screen while the log reads
+`123.5` confirms painting and rules out state. If they looked filled, the probe does not reproduce
+the app's bug at all and the next step is a temporary snapshot inside the app itself — which touches
+shipped files and costs a `CACHE_VERSION` bump, so it needs deciding rather than assuming.
 
 **The trigger was narrowed on 2026-07-30, and it is step 7's own path.** Backgrounding the app for
 several minutes and returning does **not** reproduce it: the app comes back on the day view with
@@ -454,15 +471,16 @@ currently the only way to reach this**, which is why step 7 is sequenced first: 
 export never navigates, and would close the route. Fix `numericField` anyway — the fault is latent,
 not gone, and the next feature that opens a document re-exposes it.
 
-**Confirm before or while fixing** (neither needs a fix in hand): that export → `✕` blanks the
-fields *every* time, since it has been seen once; and that export → **Salvar em Arquivos** → back
-does it too. If saving leaves the numbers alone, the history-navigation story is wrong and the
-trigger is the dismissal specifically.
+**Also still unconfirmed:** that export → `✕` blanks the fields *every* time, since the app has been
+seen doing it once. Export → **Salvar em Arquivos** → back does **not** blank them (2026-07-30), so
+the dismissal is implicated specifically.
 
-**Test surface.** The attribute-vs-property rule is `dom.js`, which has no DOM tests and cannot get
-any — but "does `numericField` set both" is decidable and could be pinned if `fields.js` ever gets a
-seam. Otherwise: hand-check on the iPhone, and confirm the desktop fill/blur/`sync` behaviour is
-unchanged, since `sync()` is what the ghost row and step 3's card-level fill both call.
+**Test surface.** Nothing here is decidable in the pure layer: a paint bug is not reachable by
+`node --test`, and neither is the attribute-vs-property rule in `dom.js`. This step is a hand-check
+on the iPhone, plus confirming the desktop fill/blur/`sync` behaviour is unchanged, since `sync()` is
+what the ghost row and step 3's card-level fill both call. If the fix turns out to be dropping the
+`render()` after `link.click()`, the thing to check on desktop is that the "last backup" note and the
+reminder banner still refresh — they were the reason that `render()` is there.
 
 ## Not scheduled, and why
 
