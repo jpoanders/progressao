@@ -1,8 +1,9 @@
 # Roadmap — the next steps, in order
 
 **Date:** 2026-07-30
-**Status:** steps 1–6, 8 and 9 shipped; **7 is the only one outstanding.** Step 9 was added by what
-step 7's verification found (see `docs/ios-export-2026-07-30.md`) and fixed ahead of it.
+**Status: all nine shipped.** Step 9 was added by what step 7's verification found (see
+`docs/ios-export-2026-07-30.md`) and fixed ahead of it; step 7 closed last, as a different feature
+than it was planned as.
 
 Nine steps, each one shippable on its own and each leaving the app in a working state. They
 are ordered to be done one at a time, top to bottom: later steps assume earlier ones have
@@ -30,8 +31,8 @@ data. Two consequences shape the sequence:
   no installed base to migrate and no backup file in anyone's inbox to stay compatible with,
   which is why it came before the polish steps rather than after them.
 
-Step 7 is a launch blocker rather than an urgent fix: nothing is at stake until there is
-something to lose, but the app cannot be handed to a real person before it is done. Step 9 looked
+Step 7 was a launch blocker rather than an urgent fix: nothing is at stake until there is
+something to lose, but the app could not be handed to a real person before it was done. Step 9 looked
 like the harder blocker of the two when it was found — it makes a logged session *look* deleted on
 the target platform, and looking deleted is what makes someone stop trusting a training log — but
 that was argued the other way at first: step 9's only known trigger is step 7's own export path, so
@@ -41,7 +42,7 @@ shipping `navigator.share` would close the route without step 9 being touched at
 route is not the same as fixing the fault: the anchor remains the fallback wherever
 `canShare({ files })` is false, and any future feature that opens a document re-opens the route. The
 fix also turned out to be one line, which made the sequencing question much smaller than the three
-rounds of measurement it took to find that line. **Step 7 is now the only step left.**
+rounds of measurement it took to find that line. Step 7 followed it and closed the list.
 
 ## Applies to every step
 
@@ -288,11 +289,37 @@ the whole fix. At the limit — ten days with long names — the row wanted 940p
 
 ## Step 7: Make backup export work in an installed iOS app
 
-**Status: verified and unblocked, not built.** The `markExported()` ordering fix below shipped on its
-own. The iPhone check is now done — iPhone 14 / iOS 26.3.1, full trace in
-`docs/ios-export-2026-07-30.md` — and it **falsified the premise of this step**, so what remains
-to build is a different thing than what was planned. Rewritten below rather than deleted, for the
-same reason the shipped steps are kept.
+**Status: shipped.** `exportBackup` in `src/app.js` now chooses between `shareBackup` and
+`downloadBackup`, and `backupPayload` in `src/state.js` builds what both of them send. The iPhone
+check that preceded it — iPhone 14 / iOS 26.3.1, full trace in `docs/ios-export-2026-07-30.md` —
+**falsified the premise of this step**, so what was built is a different thing than what was
+planned. The problem statement is rewritten below rather than deleted, for the same reason the
+other shipped steps keep theirs.
+
+**Three deviations from the plan, all deliberate.**
+
+- **The gate is `isStandalone() && canShare({ files })`, not `canShare` alone.** Capability alone
+  would also switch Android Chrome and any desktop browser with file-share support (Chrome and Edge
+  on Windows) from a one-tap download to an OS share dialog — which on desktop frequently offers no
+  "save to disk" at all. That is the fallback this step promised not to disturb. Standalone is the
+  condition under which the anchor's preview takes the whole app over, so it is the condition the
+  sheet is for; every browser tab and every desktop keeps the download. It also needs no UA
+  sniffing, unlike an iOS test.
+- **A non-cancel rejection is alerted, not retried.** `AbortError` is silent — a cancel is a
+  decision, and nothing was kept, so nothing is stamped. Anything else gets `tools.exportFailed`,
+  the step's one new string, because a tap with no visible outcome is worse than a message. The
+  obvious-sounding fallback of running the anchor instead was rejected: by the time the promise
+  settles the tap's user activation is spent, so the retry may itself be blocked, which trades a
+  clear failure for an unpredictable one.
+- **This step has automated coverage after all**, which the test-surface note below said it could
+  not. Building the file is decidable, so it moved to the pure layer as `backupPayload(state, now)`
+  and took a small latent bug with it: the contents used `now` while the filename called
+  `isoDateStamp()` with no argument — a second `Date.now()`, so an export across midnight named a
+  file after a different day than it described inside.
+
+**No iOS-only hint line was added.** It was the cheap alternative to this step (recorded in the
+findings note) and it fixes neither the stamp nor the app vanishing behind a preview. With the sheet
+one tap in, the three taps such a line would have described are gone.
 
 **What the check found.** The anchor is not a dead end. `link.click()` in standalone mode replaces
 the app with a full-screen preview showing the correct filename
@@ -307,35 +334,35 @@ practice anyway: the person running the check wrote `exportBackup` and still did
 Arquivos", so nothing reached Files and Restore could not be tested at all. **The problem is
 discoverability, not capability.**
 
-**The problem, restated.** Two things are now wrong on the one platform whose storage gets evicted
+**The problem, restated.** Two things were wrong on the one platform whose storage gets evicted
 after ~7 days, and which the install banner (`src/views/banners.js:53`) actively pushes people onto:
 
-- The export's own screen does not say how to keep the file, and the app vanishes behind it.
-- `markExported()` stamps when the *preview* opens. Dismiss it with `✕` and the app has recorded
-  a backup, gone quiet about the reminder, and produced no file. That is the ordinary outcome of
-  the ordinary gesture — no longer a theoretical limit of the anchor.
+- The export's own screen did not say how to keep the file, and the app vanished behind it.
+- `markExported()` stamped when the *preview* opened. Dismiss it with `✕` and the app had recorded
+  a backup, gone quiet about the reminder, and produced no file. That was the ordinary outcome of
+  the ordinary gesture — not a theoretical limit of the anchor.
 
-**What to build — the second point is now the stronger argument.** Feature-detect
-`navigator.canShare({ files })` and hand the JSON to the share sheet, keeping the anchor for every
-other platform. Building the JSON is synchronous, so the call stays inside the tap's user
-activation, which Safari requires. It gains no new *destinations* — it is the same sheet the preview
-already reaches — so justify it on the two things it does gain: one tap instead of three
-undiscovered ones, and a promise that rejects on cancel, which is the only way `markExported()` can
-become truthful on iOS.
+**What was built — the second point is the stronger argument.** The JSON goes to the share sheet
+whenever the app is installed and `canShare({ files })` agrees, and to the anchor otherwise.
+Building the payload is synchronous, so the call stays inside the tap's user activation, which
+Safari requires — nothing may be awaited before `share()`. It gains no new *destinations*; it is the
+same sheet the preview already reached. It is worth having for the two things it does gain: one tap
+instead of three undiscovered ones, and a promise that rejects on cancel, which is the only way
+`markExported()` could become truthful on iOS.
 
-**Both halves of that are now confirmed on the device** (2026-07-30, `docs/probe.html`):
-`canShare({ files: [json] })` is **true** for an `application/json` `File`, and backing out of the
-sheet rejects with **`AbortError`** — so the cancel is detectable and `markExported()` belongs in the
-resolve branch. The sheet also fires no `pagehide`/`pageshow`, so unlike the anchor it never takes
-the app through a restore. Nothing is left to check before building it; the cheap alternative — a
-standalone-and-iOS-only line naming the two taps — is now the fallback only if the share path turns
-out to misbehave in use, and it would leave the stamp lying.
+**Both halves were confirmed on the device before a line was written** (2026-07-30,
+`docs/probe.html`): `canShare({ files: [json] })` is **true** for an `application/json` `File`, and
+backing out of the sheet rejects with **`AbortError`** — so the cancel is detectable and
+`markExported()` belongs in the resolve branch, where it now is. The sheet also fires no
+`pagehide`/`pageshow`, so unlike the anchor it never takes the app through the restore step 9 is
+about.
 
-**The round trip is confirmed.** Salvar em Arquivos → Restaurar backup restores: the picker opens
-in standalone mode, the saved `.json` is selectable through `accept="application/json,.json"`, and
-the import reported success. So **nothing here has to be built for iOS to work** — what is left is
-discoverability and a stamp that tells the truth. `README.md`'s "downloads … keep it wherever you
-like" is wrong for installed iOS and wants a sentence either way.
+**The round trip was confirmed too.** Salvar em Arquivos → Restaurar backup restores: the picker
+opens in standalone mode, the saved `.json` is selectable through `accept="application/json,.json"`,
+and the import reported success. So **nothing had to be built for iOS to work at all** — what was
+left was discoverability and a stamp that tells the truth, which is what shipped. `README.md`'s
+backup section described the three-tap preview route and called the stamp a known bug; it now
+describes the sheet.
 
 **Two things the check found that are not this step** — the day's inputs coming back blank after
 the preview is dismissed (now step 9) and the post-import jump to Plans (deliberate; the reasoning
@@ -349,28 +376,35 @@ second. So the anchor path and the shared-`now` property both hold in a real bro
 WebKit followed from this — Chrome was never the engine under suspicion — but it did mean the
 iPhone check could not be confounded by a bug in the export itself.
 
-**One thing to fix either way — shipped.** `markExported()` used to be called *before* the
-download was attempted, so the "last backup" timestamp was stamped and the reminder banner went
-quiet whether or not a file was ever produced. It now runs after the anchor click, which is as
-close to "on success" as a synthetic `<a download>` gets — the anchor cannot report whether the
-browser accepted the file, and that is exactly why the share sheet, which *can* be cancelled,
-still needs its own handling here.
+**One thing that was fixed either way, ahead of the rest.** `markExported()` used to be called
+*before* the download was attempted, so the "last backup" timestamp was stamped and the reminder
+banner went quiet whether or not a file was ever produced. On the anchor it now runs after the
+click, which is as close to "on success" as a synthetic `<a download>` gets — the anchor cannot
+report whether the browser accepted the file, and that asymmetry is exactly why the share sheet,
+which *can* be cancelled, has its own handling.
 
-The serialized copy takes the same `now` as the stamp (`{ ...store.state, lastExport: now }`),
-so the file still describes the moment it was written. Without that, a restored backup would
-arrive claiming the export before it and could show the reminder immediately.
+The serialized copy takes the same `now` as the stamp, so the file describes the moment it was
+written. Without that, a restored backup would arrive claiming the export before it and could show
+the reminder immediately. Both halves come out of `backupPayload` for that reason.
 
-**Test surface.** None automated (`Blob`, `navigator.share`, and the DOM are all involved).
-Hand-check on a real iPhone in standalone mode — done for the current code on 2026-07-30, and to be
-redone for whatever ships — plus a desktop browser to confirm the fallback path still downloads.
+**Test surface.** `backupPayload` has a suite in `tests/state.test.js` — the stamp, the previous
+stamp being replaced rather than carried, the filename dating from the same moment as the contents,
+and the output round-tripping through `parseBackup`. Everything above it involves `File`,
+`navigator.share` and the DOM, so it was hand-checked on a real iPhone in standalone mode and driven
+in headless Chrome over CDP, where the whole branch turns out to be reachable: `isStandalone()`
+reads `navigator.standalone`, and both share APIs can be replaced with `Object.defineProperty`. That
+check covers four cases — share resolved (the right `File`, the stamp, the note and banner, and
+*no* download), cancelled (`AbortError`: no stamp, banner still reminding, nothing said), failed
+(`tools.exportFailed` alerted in both locales, still no stamp), and not-standalone-with-`canShare`
+-true, which is what pins the gate. `Browser.setDownloadBehavior` with `behavior: "allow"` is what
+makes the anchor case write a real file.
 
-The ordering fix was checked in headless Chrome over CDP instead, which is enough for a
-download: `Browser.setDownloadBehavior` with `behavior: "allow"` makes the synthetic click
-actually write a file, and breaking `URL.createObjectURL` on purpose covers the failure the fix
-is about. Two things to know if that gets rewritten — the app lands on Plans, so Backup is not
-on screen until "Back to training" is clicked; and an exception thrown inside a click handler
-does not propagate out of `.click()`, so a broken export looks exactly like a missing button
-unless you listen for `window` errors.
+Three things to know if that gets rewritten: the app lands on Plans, so Backup is not on screen
+until "Back to training" is clicked; an exception thrown inside a click handler does not propagate
+out of `.click()`, so a broken export looks exactly like a missing button unless you listen for
+`window` errors; and the note is *polled* rather than read once, because the anchor path's render is
+deferred by a macrotask (step 9) and reading it in the click's own task finds the old value by
+design.
 
 ---
 
@@ -483,8 +517,10 @@ the rebuild reads rather than replaces.
 app and returning does not reproduce it (there is no history entry and no snapshot to go stale).
 `render()` never leaves the document and the app has no outbound links, so the export preview is the
 only way to reach it: the anchor click takes the document to the `blob:` URL and `✕` comes back.
-Step 7's `navigator.share` never navigates, so it closes that route — but this fix is what makes the
-route safe wherever `canShare({ files })` is false, and for whatever future feature opens a document.
+Step 7's `navigator.share` never navigates, so it closes that route where it applies — but it is
+gated on the app being installed *and* `canShare({ files })` agreeing, so every browser tab still
+takes the anchor. This fix is what makes that route safe, and any future feature that opens a
+document.
 Export → **Salvar em Arquivos** → back did not blank the fields (2026-07-30), which is consistent:
 the return path is what differs, not the export.
 

@@ -48,6 +48,7 @@ import {
   normalizeUserExercises,
   setUserExercises,
 } from "./catalog.js";
+import { isoDateStamp } from "./format.js";
 import {
   MAX_SETS,
   clampSets,
@@ -467,6 +468,21 @@ export function countPlanEntries(state, planId) {
  */
 export function summarizeState(state) {
   return { plans: state.plans.length, records: Object.keys(state.entries).length };
+}
+
+/**
+ * The two things a backup is: bytes that describe the moment they were written, and a name.
+ *
+ * `lastExport` is overwritten rather than carried over, so a restored file never arrives claiming
+ * the export before it and showing the reminder immediately. One `now` for both halves — the
+ * filename and the contents disagreeing across midnight is exactly the kind of thing nobody
+ * notices until they are looking for the right file.
+ */
+export function backupPayload(state, now = Date.now()) {
+  return {
+    text: JSON.stringify({ ...state, lastExport: now }, null, 2),
+    filename: `progression-backup-${isoDateStamp(now)}.json`,
+  };
 }
 
 /**

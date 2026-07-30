@@ -245,6 +245,8 @@ export default {
       importDone: "Progress imported successfully.",
       importInvalid: "Invalid file. Choose a JSON backup exported by {app}.",
       readError: "Could not read the file.",
+      // Only the share path can fail visibly-to-nobody; a cancel is silent on purpose.
+      exportFailed: "Could not share the backup. Try again.",
     },
 
     settings: {

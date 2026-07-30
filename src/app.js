@@ -1,7 +1,8 @@
 import { el, fragment, replaceChildren } from "./dom.js";
-import { formatDateTime, isoDateStamp } from "./format.js";
+import { formatDateTime } from "./format.js";
 import { clampSets, clonePlan, dayLabel, displayName, findDay, newPlan, slotName } from "./plan.js";
 import {
+  backupPayload,
   countDayEntries,
   countExerciseUse,
   countOrphans,
@@ -17,7 +18,7 @@ import { renderPlansView } from "./views/plans.js";
 import { renderExercises } from "./views/exercises.js";
 import { renderPlanEditor } from "./views/planEditor.js";
 import { renderTools } from "./views/tools.js";
-import { updateBanners, wireBanners } from "./views/banners.js";
+import { isStandalone, updateBanners, wireBanners } from "./views/banners.js";
 
 /**
  * Wires the store to the DOM.
@@ -258,21 +259,63 @@ export function createApp({ store, elements }) {
   // ── Backup ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Stamped after the file has been produced, not before: the stamp is what silences the
-   * reminder banner, so stamping first meant a Blob or object-URL failure left the banner quiet
-   * with nothing downloaded. A synthetic anchor cannot report whether the browser accepted the
-   * download, so reaching the click is as close to "on success" as this path gets.
+   * Two ways out, chosen by where the app is running. Installed, the anchor below is a trap: it
+   * replaces the whole app with a full-screen preview of the file whose only route to a kept copy
+   * is a share sheet three taps down that people do not find (`docs/ios-export-2026-07-30.md`).
    *
-   * The file still carries the moment it was written rather than the previous export, so
-   * restoring a fresh backup does not land on a device that thinks it is overdue — hence the
-   * one `now` shared by the serialized copy and the stamp.
+   * Nothing may be awaited before `share()` — Safari requires the call to sit inside the tap's own
+   * user activation, which is why building the JSON is synchronous — and `canShare` is asked with
+   * the real file, because it answers about *these* files and not about the API existing.
    */
   function exportBackup() {
     const now = Date.now();
-    const backup = { ...store.state, lastExport: now };
-    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = el("a", { href: url, download: `progression-backup-${isoDateStamp()}.json` });
+    const { text, filename } = backupPayload(store.state, now);
+    const file = new File([text], filename, { type: "application/json" });
+
+    if (isStandalone() && navigator.canShare?.({ files: [file] })) {
+      shareBackup(file, now);
+      return;
+    }
+    downloadBackup(file, now);
+  }
+
+  /**
+   * The installed-app path: the same sheet the preview could reach, one tap in, and it never
+   * navigates — so the app does not disappear behind a document.
+   *
+   * It is also the only export path that can tell whether anything was kept. A cancel rejects with
+   * AbortError (measured on the device), so the stamp waits for the resolve instead of guessing,
+   * and the reminder banner keeps reminding when nothing was saved. `now` is the payload's own:
+   * re-stamping here would leave the file describing a different moment than the note beside the
+   * button.
+   *
+   * Files only, no `title` or `text` — some share targets take the text and drop the attachment.
+   */
+  function shareBackup(file, now) {
+    navigator
+      .share({ files: [file] })
+      .then(() => {
+        store.markExported(now);
+        render();
+      })
+      .catch((error) => {
+        // A cancel is a decision, not a failure: nothing was kept, so nothing is stamped and
+        // nothing is said. Anything else is invisible to the person who tapped, so say it.
+        if (error?.name === "AbortError") return;
+        window.alert(t("tools.exportFailed"));
+      });
+  }
+
+  /**
+   * Everywhere else, where a download is a download. Stamped after the file has been produced,
+   * not before: the stamp is what silences the reminder banner, so stamping first meant a Blob or
+   * object-URL failure left the banner quiet with nothing saved. A synthetic anchor cannot report
+   * whether the browser accepted the file, so reaching the click is as close to "on success" as
+   * this path gets — which is the asymmetry that makes the share path above worth having.
+   */
+  function downloadBackup(file, now) {
+    const url = URL.createObjectURL(file);
+    const link = el("a", { href: url, download: file.name });
 
     document.body.append(link);
     link.click();
@@ -280,14 +323,12 @@ export function createApp({ store, elements }) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 
     store.markExported(now);
-    // The refresh of the "last backup" note and the reminder banner is deferred, not skipped. By
-    // this line the anchor may already have started a navigation: on installed iOS `link.click()`
-    // hands the document to a full-screen preview of the file. Rebuilding <main> — and reflowing
-    // the whole page as the banner's `display: none` goes — one frame before that document freezes
-    // is the leading explanation for the fields coming back blank from the preview (roadmap step
-    // 9). A macrotask puts the render past the navigation instead: timers are paused while a
-    // document is frozen and resume on restore. The stamp above stays synchronous so it survives
-    // even if this never runs.
+    // The refresh of the "last backup" note and the reminder banner is deferred, not skipped: by
+    // this line the anchor may already have started a navigation, and a document that is leaving
+    // is not one to rebuild. (It is *not* why the day's inputs used to come back blank from the
+    // preview — that was a stale paint, roadmap step 9, and deferring this changed nothing.)
+    // Timers are paused while a document is frozen and resume on restore, so the refresh still
+    // happens. The stamp above stays synchronous so it survives even if this never runs.
     setTimeout(render, 0);
   }
 

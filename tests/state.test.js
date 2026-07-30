@@ -7,6 +7,7 @@ import {
   PREFS_KEY,
   STATE_KEY,
   STATE_VERSION,
+  backupPayload,
   countDayEntries,
   countExerciseUse,
   countOrphans,
@@ -583,6 +584,50 @@ describe("summarizeState", () => {
     // The record keyed to a plan the file does not carry is pruned on the way in, so the
     // confirmation promises three records and importing delivers three.
     assert.deepEqual(summarizeState(parseBackup(file)), { plans: 1, records: 3 });
+  });
+});
+
+describe("the backup payload", () => {
+  const plan = testPlan();
+  const entries = { "p1|1|s-bench|0": { kg: 60, reps: 8 } };
+  // Local noon, so the date parts are the same in every timezone the test might run in.
+  const now = new Date(2026, 6, 30, 12, 0, 0).getTime();
+
+  it("names the file for the day it was written", () => {
+    const { filename } = backupPayload(normalizeState(stateWith(plan, { entries })), now);
+    assert.equal(filename, "progression-backup-2026-07-30.json");
+  });
+
+  it("stamps the file with the moment it was written", () => {
+    const { text } = backupPayload(normalizeState(stateWith(plan, { entries })), now);
+    assert.equal(JSON.parse(text).lastExport, now);
+  });
+
+  /**
+   * A restored backup must not arrive claiming the export before it — it would show the reminder
+   * immediately — so the previous stamp is replaced rather than carried along.
+   */
+  it("replaces the previous export stamp instead of carrying it", () => {
+    const state = normalizeState(stateWith(plan, { entries, lastExport: 1000 }));
+    const { text } = backupPayload(state, now);
+
+    assert.equal(state.lastExport, 1000, "the live state is not mutated");
+    assert.equal(JSON.parse(text).lastExport, now);
+  });
+
+  /** The name and the contents come from one `now`: two calls to Date.now() disagree at midnight. */
+  it("dates the name from the same moment it stamps inside", () => {
+    const { text, filename } = backupPayload(emptyState(), now);
+    const stamped = new Date(JSON.parse(text).lastExport);
+    const month = String(stamped.getMonth() + 1).padStart(2, "0");
+    const day = String(stamped.getDate()).padStart(2, "0");
+
+    assert.ok(filename.includes(`${stamped.getFullYear()}-${month}-${day}`));
+  });
+
+  it("writes something parseBackup accepts", () => {
+    const { text } = backupPayload(normalizeState(stateWith(plan, { entries })), now);
+    assert.deepEqual(summarizeState(parseBackup(text)), { plans: 1, records: 1 });
   });
 });
 
