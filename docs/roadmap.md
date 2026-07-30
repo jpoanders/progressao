@@ -502,9 +502,14 @@ the dismissal is implicated specifically.
 `node --test`, and neither is the attribute-vs-property rule in `dom.js`. So this step is the iPhone
 hand-check above, plus one desktop regression that matters more than it looks: the deferred render
 is the *only* thing that refreshes the "last backup" note and clears the reminder banner, and it is
-now a frame late. Checked in headless Chrome over CDP — with `Browser.setDownloadBehavior` set to
-`allow` the synthetic click writes a real file, and the note is polled rather than read once,
-because reading it in the same task as the click now finds the old value by design.
+now a frame late. Checked in headless Chrome over CDP, 11 assertions: with
+`Browser.setDownloadBehavior` set to `allow` the synthetic click writes a real file, and the note is
+*polled* rather than read once, because reading it in the same task as the click now finds the old
+value by design. That is also the assertion that pins the fix — click the button and read the note
+inside **one** `Runtime.evaluate`, and neither the note nor the banner may have changed yet; run it
+against the previous commit and exactly those two checks fail. Seed the plan through
+`localStorage` before the load (pre-serialized string literals, per step 8's note) and remember that
+an already-active plan offers no "Use" button, so the way onto the log screen is "Back to training".
 
 ## Not scheduled, and why
 
