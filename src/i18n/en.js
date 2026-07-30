@@ -145,6 +145,7 @@ export default {
       newName: "New plan",
       copyName: "{name} (copy)",
       untitled: "Untitled plan",
+      planCount: { one: "{n} plan", other: "{n} plans" },
       weekCount: { one: "{n} week", other: "{n} weeks" },
       dayCount: { one: "{n} day", other: "{n} days" },
       recordCount: { one: "{n} record", other: "{n} records" },
@@ -230,7 +231,17 @@ export default {
       import: "Restore a backup",
       note: "Restoring replaces everything on this device.",
       lastBackup: "Last backup: {when}",
-      importConfirm: "Importing will REPLACE all current progress and plans. Continue?",
+      // One key per line of the import confirmation, not one template per case: the date line is
+      // absent from a file the app never stamped, and a device with nothing on it is not being
+      // warned about a loss, which as whole templates would be four of them per locale.
+      importReplaces: "Restoring replaces everything on this device.",
+      importEmptyDevice: "This device has no plans or records yet.",
+      importCurrent: "Here now: {plans} and {records}.",
+      importFile: "In the file: {plans} and {records}.",
+      importFileOnly: "The file holds {plans} and {records}.",
+      importDate: "Backed up {when}.",
+      importContinue: "Continue?",
+      importRestore: "Restore it?",
       importDone: "Progress imported successfully.",
       importInvalid: "Invalid file. Choose a JSON backup exported by {app}.",
       readError: "Could not read the file.",
