@@ -57,6 +57,6 @@ describe("service worker precache", () => {
   it("has a cache version to bust the old cache with", () => {
     const version = serviceWorker.match(/const CACHE_VERSION = '([^']+)'/);
     assert.ok(version, "sw.js must declare CACHE_VERSION");
-    assert.notEqual(version[1], 'progression-v13', "bump the version when shipped files change");
+    assert.notEqual(version[1], 'progression-v14', "bump the version when shipped files change");
   });
 });
