@@ -121,6 +121,10 @@ No user-facing literal strings in view code — including `aria-label`s, placeho
 
 - Plurals: pass `{ n }` and give the key an object of `Intl.PluralRules` categories. Never
   hand-write `n === 1`.
+- **One plural per key**, because `t()` selects on `n` alone. A sentence carrying two counts is
+  composed from plural *fragments* (`plans.planCount`, `recordCount`) interpolated into a
+  non-plural template — see `importMessage` in `app.js` and `views/plans.js`. Do not reach for a
+  second plural variable, and do not fall back to writing "plan(s)".
 - Ordinals are a per-locale function (`ordinal()`), not a format string.
 - Number *input* is deliberately locale-independent: `parseNumber` always accepts a comma
   as decimal separator.
@@ -148,7 +152,7 @@ can never have.
 `makeLookup(exercises)` as an argument — `normalizeState`, `normalizePlan`, `normalizeEntry`
 — because `normalizeSlot` drops a slot whose exercise it cannot resolve and the records go
 with it, so the list has to be the one that arrived with the state. `parseBackup` normalizes
-a candidate file *before* the user confirms the import (`app.js:205`), so a module-level list
+a candidate file *before* the user confirms the import (`app.js:337`), so a module-level list
 written during normalization would survive a cancelled import and the next plan edit would
 delete every custom slot. Views and labels use the module registry instead
 (`findExercise`/`byGroup`/`entryFields`/`exerciseKind`/`exerciseLabel`/`searchExercises`),

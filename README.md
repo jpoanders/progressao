@@ -107,7 +107,7 @@ src/plan.js             the Plan model: factories and repair
 src/catalog.js          the exercise catalog plans are built from
 src/format.js           number parsing and locale-aware display formatting
 src/dom.js              a small element builder
-src/views/              view builders (selectors, day, plans, planEditor, tools, banners, fields)
+src/views/              view builders (selectors, day, plans, planEditor, exercises, tools, banners, fields)
 src/i18n/               locale registry, t(), and one module per language
 sw.js                   service worker: precaches the shell, serves cache-first
 icons/                  PNG icons (180 for iOS, 192/512 and 512 maskable for the manifest)
@@ -186,7 +186,9 @@ At the bottom of any screen there is a **Backup** section:
 - **Back up now** — downloads `progression-backup-YYYY-MM-DD.json` containing 100% of your
   progress. Keep it wherever you like (email it to yourself, iCloud Drive, Google Drive…).
 - **Restore a backup** — pick a backup file to **restore everything**. Restoring replaces
-  current progress (it asks for confirmation first). Backups exported before plans became
+  current progress, and it asks first, naming the trade: how many plans and records are on this
+  device now, how many are in the file, and when the file was made. A device with nothing on it
+  yet is told that instead of being warned about a loss. Backups exported before plans became
   user-editable are rejected as invalid: they carry no `plans` array, and their records are
   keyed by exercise rather than by slot, so there is nothing to restore them against.
 

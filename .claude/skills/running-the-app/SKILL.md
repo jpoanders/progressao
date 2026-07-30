@@ -48,6 +48,8 @@ The script is the worked example — copy its CDP setup. No dependencies: node 2
 | Waiting on `readyState` | `about:blank` is already `"complete"`, so the poll exits immediately and you evaluate into the empty document | Check `location.href` **and** `readyState` |
 | Running in a container | Chrome refuses to start | `--no-sandbox --headless=new` |
 | Using the real browser | Registers a worker and cache in the user's own profile | Headless with a throwaway `--user-data-dir` |
+| Looking for the Backup or day UI on load | The app lands on **Plans**, and a fresh profile has no plans at all — so "Back up now" is not on screen and cannot be found | Create a plan, then click "Back to training"; only then is the log screen (and `renderTools`) rendered |
+| `try { el.click() } catch` | An exception inside a click handler does **not** propagate out of `.click()` — it goes to `window.onerror`, so a broken action looks exactly like a missing button | Collect `window` errors and assert on those, never on a throw from the click |
 
 ## Common mistakes
 

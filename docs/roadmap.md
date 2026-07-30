@@ -1,7 +1,7 @@
 # Roadmap — the next steps, in order
 
-**Date:** 2026-07-29
-**Status:** steps 1–6 and 8 shipped; 7 outstanding
+**Date:** 2026-07-30
+**Status:** steps 1–6 and 8 shipped; 7 outstanding (its desktop half verified, iOS unchecked)
 
 Eight steps, each one shippable on its own and each leaving the app in a working state. They
 are ordered to be done one at a time, top to bottom: later steps assume earlier ones have
@@ -54,7 +54,7 @@ something to lose, but the app cannot be handed to a real person before it is do
 One deviation from what is described below: the dot is `currentColor`, not `--ghost`, so it
 survives the ink fill a selected chip inverts to.
 
-**The problem.** The week and day chips (`src/views/selectors.js:26-42`) carry no state at
+**The problem.** The week and day chips (`src/views/selectors.js:22-30`) carried no state at
 all. Mid-block there is no way to tell Day 2 from Day 3 without tapping into each one and
 looking. This is the single most-felt gap in daily use, and the information is already
 sitting in the store.
@@ -83,10 +83,11 @@ locales, clear the day, confirm the mark goes.
 both were deleted for a single `plan.dayFallback` behind `dayLabel()` in `src/plan.js`, now
 shared by the chips, the day heading, the editor's day cards and the clear-day confirmation.
 
-**The problem.** `src/views/selectors.js:38` always renders `t("header.dayChip", { n })` —
-"Day 1", "Day 2" — even after the user has named the day "Push" in the editor. The heading
-directly below it (`src/views/day.js:246`) does use the name, so the same day is called two
-different things one line apart.
+**The problem.** The day chips (`src/views/selectors.js:47-58`) always rendered
+`t("header.dayChip", { n })` — "Day 1", "Day 2" — even after the user had named the day "Push"
+in the editor. The heading directly below them (`src/views/day.js:325`) did use the name, so the
+same day was called two different things one line apart. (`header.dayChip` no longer exists:
+both now go through `dayLabel`, which falls back to `plan.dayFallback`.)
 
 **What changes.** The chip shows the day's name when there is one, falling back to the
 position exactly as it does today. Names are unbounded, so the chip needs a `max-width` with
@@ -121,7 +122,7 @@ each row reports back through a new `onEntryChange`, so the button switches off 
 box is filled and on again when one is cleared, without a `render()`.
 
 **The problem.** The ghost row *is* the control — tapping it fills that set from last week
-(`src/views/day.js:168`). That is a nice piece of design, but it is per-set: a four-set
+(`src/views/day.js:73`). That is a nice piece of design, but it is per-set: a four-set
 exercise needs four taps before you can start editing, and you take them one-handed with a
 phone in the other.
 
@@ -152,13 +153,13 @@ Confirm cardio fills distance and time, not kg and reps.
 "3d ago".
 
 **The problem.** Records have carried an `at` timestamp since schema 3
-(`src/state.js:22`), and nothing on the log screen shows it. "Week 3, Day 2" tells you
+(`src/state.js:25`), and nothing on the log screen shows it. "Week 3, Day 2" tells you
 nothing about whether that was Tuesday or in March — which matters most when you come back
 to a block after a break and cannot remember where you actually stopped.
 
 **What changes.** A pure helper returning the most recent `at` across a day's records, or
 null. The day view renders it under the heading with the existing `formatAge`
-(`src/format.js:66`), which already produces exactly this shape of string for the
+(`src/format.js:67`), which already produces exactly this shape of string for the
 cross-block ghost tag.
 
 Records written before schema 3 have no timestamp; they get no line, the same rule the ghost
@@ -179,14 +180,14 @@ records, and a day whose records predate `at`.
 Three deviations from what is described below. **The registry alone was not safe enough:**
 anything that can delete — `normalizeState`, `normalizePlan`, `normalizeEntry` — takes an
 explicit lookup argument instead, because `parseBackup` normalizes a candidate file *before*
-the import confirm (`app.js:205`), so a list installed during normalization would survive a
+the import confirm (`app.js:337`), so a list installed during normalization would survive a
 cancelled import and the next plan edit would delete every custom slot. The registry is kept
 for the read path only. **`CATALOG` stayed the shipped 22** rather than becoming a merged
 list, which is what let `tests/i18n.test.js` go untouched — the parity worry below never
 fired. And **the picker became a filter over one-tap rows** rather than a `<select>` with a
 filter field, since a native wheel cannot be filtered at all.
 
-**The problem.** The catalog is 22 hardcoded entries (`src/catalog.js:34`). Anything you
+**The problem.** The catalog is 22 hardcoded entries (`src/catalog.js:49`). Anything you
 actually do that isn't on that list cannot be logged. This is already the stated next feature
 in both the README and `catalog.js`'s own header comment, and the module is deliberately
 indirected for it — nothing outside `catalog.js` touches `CATALOG` directly.
@@ -207,7 +208,7 @@ cheaper.
   state set by the store on write is the pragmatic shape, and there is precedent for exactly
   that in this codebase: `setLocale` in `src/i18n/index.js` works the same way. Tests have to
   reset it, which is the cost.
-- **One ordering trap.** `normalizeSlot` (`src/plan.js:110`) *drops* any slot whose
+- **One ordering trap.** `normalizeSlot` (`src/plan.js:111`) *drops* any slot whose
   `exerciseId` the catalog doesn't know, taking its records with it. So `normalizeState` must
   normalize the user's exercises **before** it normalizes plans, or the first load after an
   import silently deletes every custom slot in the file. This is the one thing in this step
@@ -250,7 +251,7 @@ push the day's own rows out of view and is wrong when you came to reorder, for o
 
 **The problem it fixed.** Adding an exercise to today cost five screens: Log → Manage plans →
 Edit → scroll to the right day → add → Done. The empty-day state offered the shortcut
-(`src/views/day.js:263-273`); a day with exercises on it did not.
+(`src/views/day.js:317-322`); a day with exercises on it did not.
 
 **The alternative, deliberately not taken.** A genuinely in-place "add exercise to today"
 would mean week-scoped slots — because a plan is the template for *every* week, so adding an
@@ -279,7 +280,7 @@ the whole fix. At the limit — ten days with long names — the row wanted 940p
 its own because it was independent of whatever the iOS check turns up. The share-sheet work and
 the iPhone verification are still open.
 
-**The problem.** `exportBackup` (`src/app.js:178`) builds a blob URL and clicks a synthetic
+**The problem.** `exportBackup` (`src/app.js:270`) builds a blob URL and clicks a synthetic
 `<a download>`. In an iOS home-screen PWA there is no download chrome, and that anchor has
 historically been a dead end. The install banner (`src/views/banners.js:53`) actively pushes
 users into precisely that mode, and the README's whole data-safety story — WebKit evicts
@@ -288,6 +289,13 @@ localStorage after about 7 days — rests on export working there.
 **Verify before building.** This is a claim about iOS behaviour, not about this code. Install
 the app to a real home screen, tap Back up now, and see what happens. If the file lands, this
 step is closed for free.
+
+The desktop half of that is already answered: on 2026-07-30 a real (not headless) Chrome on Linux
+was driven through the whole flow and the file landed — `progression-backup-2026-07-30.json`, no
+download prompt, and the on-screen "Last backup" stamp equal to the file's own `lastExport` to the
+second. So the anchor path and the shared-`now` property both hold in a real browser, and whatever
+the iPhone turns up, the fallback it would fall back *to* is known good. Nothing about WebKit
+follows from this: Chrome is not the engine under suspicion.
 
 **What changes if it doesn't.** Feature-detect `navigator.canShare({ files })` and hand the
 JSON to the share sheet — Files, Mail, iCloud Drive — keeping the anchor as the fallback for
