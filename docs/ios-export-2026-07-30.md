@@ -4,6 +4,12 @@
 > on one device on one day, because roadmap step 7 rests on a claim about iOS behaviour that
 > could only be settled by trying it. `docs/roadmap.md` carries the current status and whatever
 > was decided afterwards.
+>
+> Two notes added at the end of the same day, because the text below would otherwise send a reader
+> after a file that no longer exists. **`docs/probe.html` has been deleted** — it answered what it
+> was built to answer and both results are recorded here. And the blank-fields question it could not
+> settle **was settled: it is a paint bug**, measured from inside the app. Roadmap step 9 has the
+> reading and the fix; everything below stands as it was written.
 
 **Device.** iPhone 14, iOS 26.3.1, iOS UI in Portuguese. Installed from
 https://jpoanders.github.io/progression/ via Safari → Adicionar à Tela de Início, launched

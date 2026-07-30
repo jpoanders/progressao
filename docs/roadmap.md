@@ -1,8 +1,8 @@
 # Roadmap — the next steps, in order
 
 **Date:** 2026-07-30
-**Status:** steps 1–6 and 8 shipped; 7 outstanding, and 9 added by what its verification found
-(see `docs/ios-export-2026-07-30.md`)
+**Status:** steps 1–6, 8 and 9 shipped; **7 is the only one outstanding.** Step 9 was added by what
+step 7's verification found (see `docs/ios-export-2026-07-30.md`) and fixed ahead of it.
 
 Nine steps, each one shippable on its own and each leaving the app in a working state. They
 are ordered to be done one at a time, top to bottom: later steps assume earlier ones have
@@ -34,13 +34,14 @@ Step 7 is a launch blocker rather than an urgent fix: nothing is at stake until 
 something to lose, but the app cannot be handed to a real person before it is done. Step 9 looked
 like the harder blocker of the two when it was found — it makes a logged session *look* deleted on
 the target platform, and looking deleted is what makes someone stop trusting a training log — but
-**step 7 goes first, because step 9's only known trigger is step 7's own export path.** Nothing
-else in the app leaves the document, and backgrounding the app does not reproduce it (checked
-2026-07-30). If step 7 ships `navigator.share`, which opens a native sheet without navigating, the
-one route into step 9 may close on its own. That does not retire step 9 — the anchor stays as the
-fallback for every platform without `canShare({ files })`, and any future navigation re-opens the
-route — but it stops being the thing a user meets first. In the event step 9 was fixed first, since
-its fix turned out to be one line and its own device check (below).
+that was argued the other way at first: step 9's only known trigger is step 7's own export path, so
+shipping `navigator.share` would close the route without step 9 being touched at all.
+
+**Step 9 went first anyway, and the argument was wrong in an instructive way.** Closing the only
+route is not the same as fixing the fault: the anchor remains the fallback wherever
+`canShare({ files })` is false, and any future feature that opens a document re-opens the route. The
+fix also turned out to be one line, which made the sequencing question much smaller than the three
+rounds of measurement it took to find that line. **Step 7 is now the only step left.**
 
 ## Applies to every step
 
@@ -425,31 +426,37 @@ whatever the browser prefers — which is how a first run of that check "passed"
 
 ## Step 9: The day's inputs come back blank after a navigation away
 
-**Status: a repair is shipped and the cause is still unknown.** Added 2026-07-30, found by step 7's
-iPhone check rather than by design; full trace in `docs/ios-export-2026-07-30.md`.
+**Status: shipped, and it was never a data bug at all.** Added 2026-07-30, found by step 7's iPhone
+check rather than by design; full trace in `docs/ios-export-2026-07-30.md`.
 
-Three explanations have now been tested and killed, in this order:
+**It is a paint bug.** Measured on the device on 2026-07-30 with a temporary readout in `app.js`
+that counted, before anything repaired it, how many inputs under `<main>` still held a value on the
+restore: **every one of them did**. The numbers were in the DOM the whole time and WebKit was
+showing a stale surface over them. That is why nothing was ever lost, why the export file always
+contained the session, and why moving to another day and back has always fixed it — a DOM rebuild
+is what forces the surface to be repainted.
+
+So the fix is **`render()` on `pageshow` when `event.persisted`** (`src/app.js`), which is that same
+rebuild, run at the moment of the restore instead of waiting for the user to stumble on it.
+
+Three explanations were tested and killed first, and they are worth keeping because each one cost a
+round trip to a phone:
 
 1. **Freeze/resume.** Backgrounding the app for minutes comes back with every field filled, so
    nothing needs repairing on resume and `visibilitychange` is not the hook.
-2. **The missing `value` attribute.** `docs/probe.html` put property-only, attribute-only and
+2. **The missing `value` attribute.** A standalone probe page put property-only, attribute-only and
    both-ways inputs on the device — the property-only value assigned exactly the way `numericField`
-   does it, programmatically (`docs/probe.html:245`), *not* typed. It came back holding `123.5`
-   through a real `pageshow persisted=true`. **Do not touch `numericField`.**
+   does it, programmatically, *not* typed. It came back holding its value through a real
+   `pageshow persisted=true`. **`numericField` is not the place to fix anything here**, and the probe
+   was right for the wrong reason: it read the DOM, and the DOM was never the problem.
 3. **Rendering into the departing document.** `exportBackup` used to rebuild `<main>` synchronously
-   after `link.click()`; that is now deferred by a macrotask, which on the device changed nothing —
-   the fields were still blank. The deferral stays, because not mutating a document that is
-   navigating away is right either way, but it is not the cause.
+   after `link.click()`; deferring it by a macrotask changed nothing on the device. The deferral
+   stays, because not mutating a document that is navigating away is right either way, but it is not
+   the cause. Sequenced first because a *stale snapshot of a half-built page* was a better story
+   than it turned out to be: the snapshot is stale regardless of what was rendered into it.
 
-What all three share is that the restore keeps this closure and this DOM alive. So what is shipped
-now is a repair that does not depend on knowing which of paint or state went wrong: **`render()` on
-`pageshow` when `event.persisted`**, which is what moving to another day and back already does.
-
-Shipped beside it, and **to be deleted**: a temporary on-screen readout of what the DOM held
-*before* that render. It is the one reading nobody has been able to take — whether the fields that
-*look* blank are actually empty — and it is deliberately not routed through `t()`, which is a stated
-exception to the rule for every other string in the app rather than an oversight. One device run
-both fixes the symptom and names the mechanism; then the readout comes out.
+The probe and the readout are both deleted. Their whole value was two device runs, and both are
+written down here.
 
 **The problem.** Export a backup on installed iOS, dismiss the full-screen preview with `✕`, and
 you land back on the day you were on with **every exercise field empty**. Move to another day and
@@ -458,51 +465,28 @@ the exported file proves it — but the app has shown a person an empty workout 
 it told them their data was safe. That is a worse first impression than a failed export.
 
 It is not a reload: after a reload the app lands on Plans, since `screen` is a closure variable
-initialized to `"plans"` and never persisted (`src/app.js:35`). The DOM survived; its inputs were
-emptied.
+initialized to `"plans"` and never persisted (`src/app.js:35`). Landing back on the day view means
+the document was restored from the page cache with this closure and this DOM intact — and the
+measurement above says the inputs inside it were intact too. Nothing was emptied; a surface was
+stale.
 
-**Why it happens: still not known.** The status above says what has been eliminated and how. What
-survives is a fork nobody has managed to read, because the only report has been visual and the only
-instrument has been outside the app:
+**Why `pageshow` and not something narrower.** The restore hands back a live document whose paint is
+not trustworthy, so the repair has to touch the DOM. `render()` already exists to rebuild `<main>`
+from state and is cheap — the tree is a few dozen nodes — and calling it here costs nothing on any
+other platform because `event.persisted` is false for an ordinary load, which has just rendered
+anyway. It takes the same branches as any stepper re-render: `screen` and the `lastAnchor` string
+are unchanged, so neither the `scrollTo(0, 0)` nor the focus move fires. There is no unsaved state to
+lose — every keystroke has already written through, and the editor's `draft` is a closure variable
+the rebuild reads rather than replaces.
 
-- **Paint.** The values were in the DOM the whole time and simply were not on screen. A restored
-  page-cache snapshot showing stale or half-built content would look exactly like this, and any
-  interaction would repair it — which is what moving to another day and back does.
-- **State.** The restore really does empty the inputs *in the app*, in a way it demonstrably does
-  not in a standalone page with the same kind of programmatically-assigned value.
-
-`reportRestore` in `src/app.js` answers that and nothing else: it counts, before the repairing
-render, how many inputs under `<main>` still held a value, and prints the first three with their
-`value` and `value` attribute side by side.
-
-**The device check.** On the iPhone, in standalone, after the deploy. **Fill every box on the day**
-— a partly-filled day makes the count ambiguous — then export, dismiss with `✕`, and read the black
-panel before dismissing it.
-
-| The readout says | Reading | Next |
-|---|---|---|
-| `still held a value = N / N` | Paint. The DOM was intact and WebKit was showing a stale surface | Keep the `pageshow` render as the fix, delete the readout, close the step |
-| `still held a value = 0 / N` | State. The restore empties them in the app | Keep the fix, delete the readout, and record what the probe did differently — that is the remaining puzzle, not a blocker |
-| Fields blank *and no panel* | The restore is not `persisted`, so this was never a page-cache restore at all | Everything above is built on the wrong premise; the next move is what `pageshow` *does* fire with, and step 7 becomes the whole answer |
-
-That last row is the one worth watching for: it is the only outcome that says the model is wrong
-rather than incomplete, and `pagehide persisted =` on the panel is the same question asked from the
-other side.
-
-**The trigger was narrowed on 2026-07-30, and it is step 7's own path.** Backgrounding the app for
-several minutes and returning does **not** reproduce it: the app comes back on the day view with
-every field filled, so freeze/resume is not the mechanism and `visibilitychange` has nothing to
-repair. What is left is a session-history navigation — the anchor click takes the document to the
-`blob:` URL and `✕` comes back — which is why the closure survives while the inputs reset. Since
-`render()` never leaves the document and the app has no outbound links, **the export preview is
-currently the only way to reach this**. That is why step 7 was sequenced first: a `navigator.share`
-export never navigates, and closes the route. It does not retire the fault — the anchor remains the
-fallback wherever `canShare({ files })` is false, and the next feature that opens a document
-re-exposes it — which is why the fix landed in `exportBackup` rather than waiting on step 7.
-
-**Also still unconfirmed:** that export → `✕` blanks the fields *every* time, since the app has been
-seen doing it once. Export → **Salvar em Arquivos** → back does **not** blank them (2026-07-30), so
-the dismissal is implicated specifically.
+**The trigger is a session-history navigation, and today only export makes one.** Backgrounding the
+app and returning does not reproduce it (there is no history entry and no snapshot to go stale).
+`render()` never leaves the document and the app has no outbound links, so the export preview is the
+only way to reach it: the anchor click takes the document to the `blob:` URL and `✕` comes back.
+Step 7's `navigator.share` never navigates, so it closes that route — but this fix is what makes the
+route safe wherever `canShare({ files })` is false, and for whatever future feature opens a document.
+Export → **Salvar em Arquivos** → back did not blank the fields (2026-07-30), which is consistent:
+the return path is what differs, not the export.
 
 **Test surface.** Nothing here is decidable in the pure layer: a paint bug is not reachable by
 `node --test`, and neither is the attribute-vs-property rule in `dom.js`. So this step is the iPhone
@@ -517,12 +501,16 @@ against the previous commit and exactly those two checks fail. Seed the plan thr
 `localStorage` before the load (pre-serialized string literals, per step 8's note) and remember that
 an already-active plan offers no "Use" button, so the way onto the log screen is "Back to training".
 
-The `pageshow` half was checked the same way, 10 assertions. A real page-cache restore is not
-drivable from CDP, so the check blanks the inputs by hand and dispatches
+The `pageshow` half was checked the same way. A real page-cache restore is not drivable from CDP, so
+the check empties the inputs by hand and dispatches
 `new PageTransitionEvent("pageshow", { persisted: true })` — the constructor takes `persisted`, which
-is read-only on the instance. That covers the readout's counts and its conclusion, the render putting
-the numbers back, `dismiss`, and that a **non**-persisted `pageshow` is ignored, which is what keeps
-an ordinary load from showing the panel.
+is read-only on the instance — then asserts the numbers are back. The companion assertion is that a
+**non**-persisted `pageshow` changes nothing, which is what keeps an ordinary load from paying for
+this. Neither is reachable from `node --test`: a `pageshow` listener needs a window.
+
+What the desktop cannot check is the thing the step is about. A stale compositing surface is not
+reproducible in headless Chrome, so *that* the repair works was established on the device and
+nowhere else.
 
 ## Not scheduled, and why
 
