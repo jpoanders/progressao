@@ -118,14 +118,37 @@ reappear. That fits the symptom exactly.
 **Two candidate fixes, neither implemented.** Setting the `value` attribute alongside the
 property makes the default value correct, so a restore shows the right number instead of nothing
 — and it belongs inside `numericField` (creation, `blur` and `sync` all assign the same way), not
-sprinkled at call sites. Alternatively, re-`render()` on `pageshow`/`visibilitychange`, which
-repairs it whatever the mechanism turns out to be. The first is narrower; the second also covers
-anything else the restore clobbers.
+sprinkled at call sites. Alternatively, re-`render()` on `pageshow` when `event.persisted` is
+true, which repairs whatever else the restore clobbered too. The first is narrower and needs no
+event at all; the second is broader but only fires on the page-cache path, so it does nothing for
+a plain reset. (`visibilitychange` was the third candidate and is now ruled out — see below.)
 
-**Not export-specific, and that is the point.** Any navigation away from a standalone PWA and
-back is the same path — the preview's own compass (open in Safari) and back chevron are two more
-ways in. Worth reproducing without export in the picture before fixing, and worth confirming with
-one read in the page: after `✕`, compare `input.value` against `input.getAttribute("value")`.
+**Backgrounding the app does *not* do it — checked the same day.** With a day's numbers on
+screen, the app was sent to the background and left there for several minutes, then reopened from
+the home-screen icon. It came back **on the same day view** (so the document was restored, not
+re-created — a fresh launch lands on Plans) with **every field still filled**. Repeated with a
+longer wait, same result.
+
+That was the check meant to show this had nothing to do with export, and it showed the opposite.
+Two consequences. A `visibilitychange` fix is pointless: there is nothing to repair on resume.
+And the trigger is narrower than "any navigation away" — freeze/resume is not enough.
+
+**What is left fits the mechanism better, not worse.** The remaining difference between the two
+cases is a *session-history* navigation: the anchor click takes the app's own top-level browsing
+context to the `blob:` URL, iOS renders that as the preview, and `✕` is a **back** navigation.
+Restoring from WebKit's page cache keeps the JS closure alive — which is exactly why you land on
+the day view and not on Plans — and on that restore WebKit reapplies the form state saved in the
+history entry. For an input whose value was only ever assigned as a property, there is no saved
+state and no `value` attribute, so it restores to a blank default. Resume, by contrast, involves
+no history entry and no form-state reapplication, which is why it comes back filled. Every
+observation so far fits; none of it has been confirmed by reading the DOM.
+
+**So today, export is the only way to reach this.** The app has no outbound links and no
+in-app navigation — `render()` swaps the contents of one `<main>` and never leaves the document —
+which means the export preview is the only thing that creates a history entry to come back from.
+That does not make the bug less real when it fires, but it does mean it is not a general
+"leave the app and lose your screen" defect, and it changes the ordering against step 7 (see the
+roadmap).
 
 ## Found while checking: import returns you to Plans (deliberate)
 
@@ -182,9 +205,17 @@ sentence is wrong for.
 
 Worth doing on the next pass, none of it blocking the write-up:
 
-- **Whether the blank-input restore reproduces without export in the picture** — open in Safari
-  via the compass and come back, or background the app and return. That decides whether the fix
-  belongs in `numericField` or in the export path.
+- **Whether export → `✕` blanks the fields every time.** Observed once. One observation is
+  enough to justify a fix but not enough to describe the trigger, and everything above rests on
+  it.
+- **Whether the return path matters, or only the dismissal.** Export → **Salvar em Arquivos** →
+  back in the app: still filled, or blank? Both routes come back through the same history entry,
+  so if saving the file leaves the numbers alone then the story above is wrong.
+- **The decisive DOM read**, which needs a console the phone does not have without a Mac: after
+  `✕`, compare `input.value` with `input.getAttribute("value")`. A throwaway page served from
+  `docs/` would answer it.
+- **Opening in Safari via the preview's compass** and returning to the app. Different again from
+  both cases above: it leaves the app entirely rather than navigating within it.
 - Whether the `✕` return preserves *everything else* the closure held, or only the screen: scroll
   position, the picker's open state, an in-progress plan draft.
 - The same export in a normal Safari tab on the same phone, which would show whether the
