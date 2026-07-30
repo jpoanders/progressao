@@ -1,7 +1,7 @@
 # Roadmap — the next steps, in order
 
 **Date:** 2026-07-29
-**Status:** steps 1, 2, 4 and 5 shipped; 3 and 6–8 outstanding
+**Status:** steps 1–5 shipped; 6–8 outstanding
 
 Eight steps, each one shippable on its own and each leaving the app in a working state. They
 are ordered to be done one at a time, top to bottom: later steps assume earlier ones have
@@ -22,8 +22,8 @@ The app is not in production and has no users, so nothing here is ranked by risk
 data. Two consequences shape the sequence:
 
 - **Steps 1–4 come first because they are what you feel every session at the gym**, and each
-  is small enough to finish in one sitting. None of them changes the storage schema. Steps 1,
-  2 and 4 have landed; step 3 is the one left, and nothing after it depends on it.
+  is small enough to finish in one sitting. None of them changes the storage schema. All four
+  have landed.
 - **Step 5 changed the schema, and doing it early was the point.** It landed while there was
   no installed base to migrate and no backup file in anyone's inbox to stay compatible with,
   which is why it came before the polish steps rather than after them.
@@ -109,7 +109,16 @@ the blank one still reads "Day 2", and a 30-character name doesn't blow out the 
 
 ## Step 3: Pull last week's numbers for a whole exercise at once
 
-**Status: not started.** The only step of 1–4 still outstanding.
+**Status: shipped.** `setRow` returns `{ node, fill, canFill }`; `exerciseCard` drives every
+row from one `.btn` in the `.ex-actions` row, spoken through `exercise.fillSets`.
+
+Two deviations. **It fills only the empty boxes** — the roadmap left the question open, and
+overwriting a card's worth of typed numbers on one tap has no undo anywhere in this app, so the
+per-set ghost row stays the way to replace something already logged. That rule turned out to be
+decidable after all, so it went to the pure layer as `fillableFields` in `src/state.js` with
+tests, rather than staying the view wiring this step predicted. **The disabled state is live**:
+each row reports back through a new `onEntryChange`, so the button switches off when the last
+box is filled and on again when one is cleared, without a `render()`.
 
 **The problem.** The ghost row *is* the control — tapping it fills that set from last week
 (`src/views/day.js:168`). That is a nice piece of design, but it is per-set: a four-set
