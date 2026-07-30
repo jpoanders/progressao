@@ -44,7 +44,7 @@ register there.
 
 `src/main.js` collects the static DOM from `index.html` into an `elements` object and
 hands it plus a store to `createApp`. `index.html` holds only the shell (header, banner
-markup, empty `<main id="content">`); everything inside `<main>` is built in JS.
+markup, empty `<main id="content">`, footer); everything inside `<main>` is built in JS.
 
 Three layers, one direction of dependency:
 
@@ -63,10 +63,26 @@ would be a dependency. So `views/*`, `dom.js`, `app.js` and `main.js` are checke
 in the browser (`npm run serve`) — which is the reason to keep anything decidable out of
 them and in the pure layer, where a test can reach it.
 
+What can be automated without a dependency is a *browser*: node ships global `WebSocket` and
+`fetch`, which is all a CDP client needs, so headless Chrome can be driven from a throwaway
+script. `.claude/skills/running-the-app/` has the worked example and the gotchas, and is how
+the export, import and page-restore paths in `app.js` were actually checked.
+
 Rendering is **whole-view**: any structural change rebuilds `<main>` from state via
 `render()`. Do not add fine-grained DOM patching — the tree is small and this rules out
 stale-node bugs. `render()` is deliberately not called from text-input handlers
 (`views/fields.js` writes through on every keystroke and re-reads on blur).
+
+Two `render()` calls are not about a state change at all, and both look like dead weight
+until you know why:
+
+- **`pageshow` with `event.persisted`.** WebKit restores a page-cached document whose *paint*
+  is stale — on installed iOS the day's inputs still held their numbers while the screen
+  showed empty boxes. Rebuilding is what forces a repaint. Not reachable from `node --test`,
+  and not reproducible in headless Chrome either.
+- **`setTimeout(render, 0)` after the export anchor's click.** By that line the document may
+  already be navigating, and it is the only thing that refreshes the "last backup" note — so
+  a test that reads the note in the click's own task must find it *unchanged*.
 
 Two conventions the whole-view rebuild depends on: each screen's heading carries
 `class="screen-title"` with `tabIndex: -1`, because `render()` moves focus there when the
@@ -152,9 +168,9 @@ can never have.
 `makeLookup(exercises)` as an argument — `normalizeState`, `normalizePlan`, `normalizeEntry`
 — because `normalizeSlot` drops a slot whose exercise it cannot resolve and the records go
 with it, so the list has to be the one that arrived with the state. `parseBackup` normalizes
-a candidate file *before* the user confirms the import (`app.js:337`), so a module-level list
-written during normalization would survive a cancelled import and the next plan edit would
-delete every custom slot. Views and labels use the module registry instead
+a candidate file *before* the user confirms the import (`handleImportFile` in `app.js`), so a
+module-level list written during normalization would survive a cancelled import and the next
+plan edit would delete every custom slot. Views and labels use the module registry instead
 (`findExercise`/`byGroup`/`entryFields`/`exerciseKind`/`exerciseLabel`/`searchExercises`),
 installed by the store in `saveState()`: threading a lookup to every leaf of `day.js` would
 buy nothing, and a stale registry only mislabels.
