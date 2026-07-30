@@ -183,8 +183,17 @@ about 7 days without visiting the site**. Two defences:
 
 At the bottom of any screen there is a **Backup** section:
 
-- **Back up now** — downloads `progression-backup-YYYY-MM-DD.json` containing 100% of your
-  progress. Keep it wherever you like (email it to yourself, iCloud Drive, Google Drive…).
+- **Back up now** — produces `progression-backup-YYYY-MM-DD.json` containing 100% of your
+  progress. On a desktop browser and on Android it downloads, and you keep it wherever you
+  like (email it to yourself, iCloud Drive, Google Drive…).
+
+  **On an iPhone with the app installed to the home screen, nothing downloads** — iOS replaces
+  the app with a full-screen preview of the file. To keep it, tap the share icon in the bottom
+  bar (or "Open with…", which opens the same sheet) and choose **Save to Files**; AirDrop, Mail
+  and iCloud Drive are in that sheet too. A file saved that way is selectable by **Restore a
+  backup**, so the round trip works — but dismissing the preview with ✕ keeps no file at all,
+  while the app still records the backup and stops reminding you. That last part is a known
+  bug, not the intent; `docs/ios-export-2026-07-30.md` records what the device actually did.
 - **Restore a backup** — pick a backup file to **restore everything**. Restoring replaces
   current progress, and it asks first, naming the trade: how many plans and records are on this
   device now, how many are in the file, and when the file was made. A device with nothing on it
