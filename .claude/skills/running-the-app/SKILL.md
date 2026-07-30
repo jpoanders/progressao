@@ -61,3 +61,9 @@ The script is the worked example — copy its CDP setup. No dependencies: node 2
 - Editing this skill and reaching for a `CACHE_VERSION` bump. `.claude/` is not shipped and
   is not in `SHELL`; only files under `src/`, `styles/`, `icons/`, `fonts/` and the root
   shell carry that obligation.
+- **Cleaning up only on the happy path.** A `teardown()` in `finally` is not enough: `finally`
+  does not run when node is signalled, and Ctrl-C is how an interrupted run ends. Copy the
+  signal handlers along with the CDP setup, wait for Chrome's `exit` event before removing its
+  profile (`kill()` returns while it is still writing), and never let the script `process.exit()`
+  while leaving a browser running — an orphaned headless Chrome has no parent left to interrupt.
+  Forty-one profiles and an hour-old Chrome accumulated in `/tmp` before this was fixed.

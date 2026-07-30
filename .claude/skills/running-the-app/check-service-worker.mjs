@@ -11,7 +11,9 @@
  *
  *   node .claude/skills/running-the-app/check-service-worker.mjs [--port 8080] [--keep-open]
  *
- * Exits non-zero on the first failed check.
+ * Exits non-zero on the first failed check. Always reclaims the Chrome profile, the browser and
+ * the server — including on Ctrl-C, and including under --keep-open, which parks until you
+ * interrupt it rather than orphaning what it left running.
  */
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -59,12 +61,52 @@ let chrome;
 let profile;
 let ws;
 
+/**
+ * SIGTERM, then *wait for the exit*. Chrome is still writing to its profile when kill()
+ * returns, so removing the directory immediately loses the race and leaves it behind — and
+ * the removal is deliberately silent, so the leak is invisible. SIGKILL after 4s in case
+ * Chrome will not go quietly.
+ */
+const endProcess = (child) =>
+  new Promise((resolve) => {
+    if (!child || child.exitCode !== null || child.signalCode !== null) return resolve();
+    const force = setTimeout(() => {
+      try { child.kill("SIGKILL"); } catch {}
+      resolve();
+    }, 4000);
+    child.once("exit", () => {
+      clearTimeout(force);
+      resolve();
+    });
+    try {
+      child.kill();
+    } catch {
+      clearTimeout(force);
+      resolve();
+    }
+  });
+
+let torndown = false;
 const teardown = async () => {
+  if (torndown) return;
+  torndown = true;
   try { ws?.close(); } catch {}
-  chrome?.kill();
-  server.kill();
+  await endProcess(chrome);
+  await endProcess(server);
   if (profile) await rm(profile, { recursive: true, force: true }).catch(() => {});
 };
+
+/**
+ * `finally` does not run when node is signalled, and Ctrl-C is how an interrupted run ends.
+ * Without this, an interrupted check leaves a live Chrome, a live server holding the port,
+ * and a profile in the temp directory — which is exactly how 41 of them accumulated.
+ */
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(signal, async () => {
+    await teardown();
+    process.exit(130);
+  });
+}
 
 try {
   for (let i = 0; i < 40; i++) {
@@ -225,4 +267,19 @@ try {
 
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
+
+// --keep-open used to fall straight through to process.exit(), which orphaned Chrome and the
+// server: no parent left to interrupt, nothing holding the port accountable. Park here instead,
+// so the signal handlers above are what ends the run.
+if (args.includes("--keep-open")) {
+  console.log(
+    `\nstill open for inspection:` +
+      `\n  Chrome  pid ${chrome?.pid}  CDP http://127.0.0.1:${CDP_PORT}` +
+      `\n  server  pid ${server.pid}  ${ORIGIN}` +
+      `\n  profile ${profile}` +
+      `\nCtrl-C closes all three.`,
+  );
+  await new Promise(() => {});
+}
+
 process.exit(failed.length === 0 ? 0 : 1);
