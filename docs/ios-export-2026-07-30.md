@@ -115,6 +115,12 @@ restores or resets form state therefore lands the field on its default, which is
 the store is untouched. Returning via a fresh `render()` re-assigns the property and the numbers
 reappear. That fits the symptom exactly.
 
+> **Superseded the same day — this paragraph and the two fixes under it are wrong.**
+> `docs/probe.html` put the three cases on
+> the device and the restore did *not* empty the property-only input. Everything above is a correct
+> reading of the code and a wrong explanation of the bug. Kept as written because the reasoning is
+> what the probe was built to test; see "Probe results" below for what actually happened.
+
 **Two candidate fixes, neither implemented.** Setting the `value` attribute alongside the
 property makes the default value correct, so a restore shows the right number instead of nothing
 — and it belongs inside `numericField` (creation, `blur` and `sync` all assign the same way), not
@@ -149,6 +155,49 @@ which means the export preview is the only thing that creates a history entry to
 That does not make the bug less real when it fires, but it does mean it is not a general
 "leave the app and lose your screen" defect, and it changes the ordering against step 7 (see the
 roadmap).
+
+## Probe results, same day (`docs/probe.html`)
+
+Standalone confirmed, iOS 26.3 / AppleWebKit 605.1.15. Each button declared what the person was
+about to do — cancel or save, `✕` or Save to Files — because the page cannot observe it and a log
+without that is uninterpretable. The first run of the probe proved that: it came back `RESOLVED`
+from a share that had been *saved*, and a `✕` that had actually been a Save to Files, so it answered
+neither question.
+
+**Step 7 is answered, and the answer is yes.**
+
+- `canShare({ files: [json] })` is **true** for a `File` of type `application/json` named like a real
+  backup.
+- `share({ files })`, then backing out of the sheet: **`REJECTED AbortError — Abort due to
+  cancellation of share.`** iOS *does* report the cancel, so `markExported()` can move into the
+  resolve branch and stop claiming backups that never happened. That was the last unknown standing
+  between step 7 and being buildable.
+- The share sheet logged **no `pagehide`, `pageshow` or `visibilitychange` at all**. It does not
+  freeze the document — so a share-based export never takes the app through the restore that step 9
+  needs, which is the second reason to prefer it.
+
+**Step 9's mechanism is not what the code suggested.**
+
+- `Export → then ✕`, with the three inputs rebuilt immediately after `link.click()` the way
+  `render()` does: `pagehide persisted=true` → `pageshow persisted=true` a second later, the
+  closure id unchanged, and on return **A: `value="123.5"`, `attr=null`**. The property-only input
+  kept its value. The missing attribute cost nothing.
+- The restore path reproduced exactly; the symptom did not reproduce at all. So the empty `value`
+  attribute is not the cause, and setting it is not the fix. Two runs now say so — the first without
+  the post-click rebuild, the second with it.
+
+**What the probe cannot see, and what that leaves.** The probe reads the DOM; the report from the app
+was visual — "all the exercise fields appear blank". If the values are present and simply unpainted,
+this log is exactly what that would print. The app rebuilds `<main>` synchronously while the
+navigation to the `blob:` URL is already in flight, one frame before the freeze, and a restored
+snapshot that missed that update would show empty boxes over correct state until any interaction
+repaired it — which is what moving to another day and back did. That would also explain why nothing
+was ever lost.
+
+**The cheap next measurement is a pair of eyes, not more code:** run `Export → then ✕` again and
+report whether the three boxes *looked* filled on return, alongside what the log says they
+contained. If they looked blank while the log says `123.5`, the bug is in painting and not in state,
+and no amount of DOM instrumentation will find it.
 
 ## Found while checking: import returns you to Plans (deliberate)
 
