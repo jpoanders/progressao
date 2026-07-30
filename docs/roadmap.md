@@ -37,9 +37,10 @@ the target platform, and looking deleted is what makes someone stop trusting a t
 **step 7 goes first, because step 9's only known trigger is step 7's own export path.** Nothing
 else in the app leaves the document, and backgrounding the app does not reproduce it (checked
 2026-07-30). If step 7 ships `navigator.share`, which opens a native sheet without navigating, the
-one route into step 9 may close on its own. That does not retire step 9 — the latent fault in
-`numericField` is real and any future navigation re-opens it — but it stops being the thing a user
-meets first.
+one route into step 9 may close on its own. That does not retire step 9 — the anchor stays as the
+fallback for every platform without `canShare({ files })`, and any future navigation re-opens the
+route — but it stops being the thing a user meets first. In the event step 9 was fixed first, since
+its fix turned out to be one line and its own device check (below).
 
 ## Applies to every step
 
@@ -424,8 +425,13 @@ whatever the browser prefers — which is how a first run of that check "passed"
 
 ## Step 9: The day's inputs come back blank after a navigation away
 
-**Status: not started.** Added 2026-07-30, found by step 7's iPhone check rather than by design;
-full trace in `docs/ios-export-2026-07-30.md`.
+**Status: a fix is shipped, unconfirmed on the device.** Added 2026-07-30, found by step 7's iPhone
+check rather than by design; full trace in `docs/ios-export-2026-07-30.md`. The `render()` after
+`link.click()` in `exportBackup` is now deferred by a macrotask instead of running synchronously
+into a document that is navigating away. That is the paint hypothesis below, shipped as the
+experiment: two rounds of measurement killed the other two explanations and the remaining one is
+not observable from inside the page, so the cheapest discriminator left is the fix itself on the
+real app. **The step is not closed until the iPhone check below has been run** — see the table.
 
 **The problem.** Export a backup on installed iOS, dismiss the full-screen preview with `✕`, and
 you land back on the day you were on with **every exercise field empty**. Move to another day and
@@ -447,19 +453,35 @@ intact) and **the property-only input came back holding its value**. Tested twic
 inputs rebuilt right after the click the way `render()` does. So the attribute theory is dead: do
 not "fix" `numericField` on the strength of it.
 
-**What is left.** The probe reads the DOM; the report was visual. The likeliest remaining explanation
-is that the values were never gone — only unpainted. `exportBackup` rebuilds `<main>` synchronously
-after `link.click()`, while the navigation is already in flight and one frame before the document
-freezes; a restored snapshot that missed that update would show empty boxes over correct state, and
-the first interaction would repair it, which is what moving to another day and back did. If that is
-it, the fix is not in `fields.js` at all — it is not re-rendering into a document on its way out
-(drop the `render()` call, or defer it past the navigation), or forcing a repaint on `pageshow`.
+**What is left, and what shipped for it.** The probe reads the DOM; the report was visual. The
+likeliest remaining explanation is that the values were never gone — only unpainted. `exportBackup`
+rebuilt `<main>` synchronously after `link.click()`, while the navigation was already in flight and
+one frame before the document freezes. And it did more than swap `<main>`: `updateBanners` toggles
+the backup reminder *above* it, and `.hidden` is `display: none !important`
+(`styles/app.css:106`), so the export's own render reflowed the entire page at that instant. A
+restored page-cache snapshot that caught that moment would show empty boxes over correct state until
+any interaction repaired it — which is what moving to another day and back did, and why nothing was
+ever actually lost.
 
-**Next measurement, before any code.** Run the probe's `Export → then ✕` and report whether the three
-boxes *looked* filled, next to what the log says they contained. Blank on screen while the log reads
-`123.5` confirms painting and rules out state. If they looked filled, the probe does not reproduce
-the app's bug at all and the next step is a temporary snapshot inside the app itself — which touches
-shipped files and costs a `CACHE_VERSION` bump, so it needs deciding rather than assuming.
+So the fix is not in `fields.js` at all: `setTimeout(render, 0)` puts the refresh past the
+navigation. `markExported(now)` stays synchronous and stays after the click, so the stamp survives
+even when the deferred render does not — and if iOS discards the document rather than restoring it,
+the next load reads `lastExport` from storage and renders the note correctly anyway. Forcing a
+repaint on `pageshow` remains the escalation, not the first move.
+
+**The device check, which is the measurement.** A paint bug is not observable from inside the page —
+that is why the probe could not settle this and why the fix ships as the experiment. On the iPhone,
+in standalone, after the deploy: log numbers on a day, export, dismiss with `✕`, and look.
+
+| On return from `✕` | Reading | Next |
+|---|---|---|
+| Filled, repeatedly | The synchronous render into a departing document was it | Step 9 closes; delete `docs/probe.html` and `docs/probe.webmanifest` |
+| Filled without the reminder banner, blank with it | Same cause, and the reflow is the specific trigger | Step 9 closes; record the banner as the mechanism |
+| Still blank | The paint hypothesis is wrong or incomplete | Keep the fix — not re-rendering into a departing document is right regardless — and escalate to a temporary snapshot inside the app on `pageshow`, which touches shipped files and costs another `CACHE_VERSION` bump, so it needs deciding rather than assuming |
+
+The banner row is worth the extra run: it is `overdue && hasData && !dismissedRecently`
+(`src/views/banners.js:48-51`), so it is controllable, and it is the difference between a subtree
+swap and a full-page reflow.
 
 **The trigger was narrowed on 2026-07-30, and it is step 7's own path.** Backgrounding the app for
 several minutes and returning does **not** reproduce it: the app comes back on the day view with
@@ -467,20 +489,22 @@ every field filled, so freeze/resume is not the mechanism and `visibilitychange`
 repair. What is left is a session-history navigation — the anchor click takes the document to the
 `blob:` URL and `✕` comes back — which is why the closure survives while the inputs reset. Since
 `render()` never leaves the document and the app has no outbound links, **the export preview is
-currently the only way to reach this**, which is why step 7 is sequenced first: a `navigator.share`
-export never navigates, and would close the route. Fix `numericField` anyway — the fault is latent,
-not gone, and the next feature that opens a document re-exposes it.
+currently the only way to reach this**. That is why step 7 was sequenced first: a `navigator.share`
+export never navigates, and closes the route. It does not retire the fault — the anchor remains the
+fallback wherever `canShare({ files })` is false, and the next feature that opens a document
+re-exposes it — which is why the fix landed in `exportBackup` rather than waiting on step 7.
 
 **Also still unconfirmed:** that export → `✕` blanks the fields *every* time, since the app has been
 seen doing it once. Export → **Salvar em Arquivos** → back does **not** blank them (2026-07-30), so
 the dismissal is implicated specifically.
 
 **Test surface.** Nothing here is decidable in the pure layer: a paint bug is not reachable by
-`node --test`, and neither is the attribute-vs-property rule in `dom.js`. This step is a hand-check
-on the iPhone, plus confirming the desktop fill/blur/`sync` behaviour is unchanged, since `sync()` is
-what the ghost row and step 3's card-level fill both call. If the fix turns out to be dropping the
-`render()` after `link.click()`, the thing to check on desktop is that the "last backup" note and the
-reminder banner still refresh — they were the reason that `render()` is there.
+`node --test`, and neither is the attribute-vs-property rule in `dom.js`. So this step is the iPhone
+hand-check above, plus one desktop regression that matters more than it looks: the deferred render
+is the *only* thing that refreshes the "last backup" note and clears the reminder banner, and it is
+now a frame late. Checked in headless Chrome over CDP — with `Browser.setDownloadBehavior` set to
+`allow` the synthetic click writes a real file, and the note is polled rather than read once,
+because reading it in the same task as the click now finds the old value by design.
 
 ## Not scheduled, and why
 
