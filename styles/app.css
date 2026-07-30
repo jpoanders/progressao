@@ -477,7 +477,20 @@ footer {
   .gain--in { animation: none; }
 }
 
-.ex-actions { margin-top: var(--s4); }
+/*
+ * The card's own controls: the set stepper, and the button that fills every set from last
+ * time. Wraps rather than breaking at a width, for the reason .actions gives — the stepper is
+ * fixed at about 168px and the button's label is translated, so "Preencher séries" takes its
+ * own line on a 320px screen where "Fill sets" does not.
+ */
+.ex-actions {
+  margin-top: var(--s4);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+}
 
 /* ── Cards ─────────────────────────────────────────────────────────────────────────── */
 

@@ -74,6 +74,10 @@ export default {
         dist: "+{n} km",
         reps: { one: "+{n} rep", other: "+{n} reps" },
       },
+      // Names no week: the numbers it copies can come from an earlier block, which is why the
+      // ghost row needs both useLast* and useOlder* and this button needs neither.
+      fillSets: "Fill sets",
+      fillSetsAria: "Fill the empty sets of {exercise} with the previous numbers",
       addSetAria: "Add a set to {exercise}",
       removeSetAria: "Remove a set from {exercise}",
       removeSetConfirm:

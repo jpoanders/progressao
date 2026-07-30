@@ -61,6 +61,8 @@ export default {
         dist: "+{n} km",
         reps: { one: "+{n} rep", other: "+{n} reps" },
       },
+      fillSets: "Preencher séries",
+      fillSetsAria: "Preencher as séries vazias de {exercise} com os números anteriores",
       addSetAria: "Adicionar série a {exercise}",
       removeSetAria: "Remover série de {exercise}",
       removeSetConfirm:
