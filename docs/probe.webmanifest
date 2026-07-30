@@ -1,7 +1,7 @@
 {
   "name": "Progression probe",
   "short_name": "Probe",
-  "start_url": "./probe.html",
+  "start_url": "./probe.html?v=2",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
