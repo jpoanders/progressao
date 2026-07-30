@@ -425,13 +425,31 @@ whatever the browser prefers — which is how a first run of that check "passed"
 
 ## Step 9: The day's inputs come back blank after a navigation away
 
-**Status: a fix is shipped, unconfirmed on the device.** Added 2026-07-30, found by step 7's iPhone
-check rather than by design; full trace in `docs/ios-export-2026-07-30.md`. The `render()` after
-`link.click()` in `exportBackup` is now deferred by a macrotask instead of running synchronously
-into a document that is navigating away. That is the paint hypothesis below, shipped as the
-experiment: two rounds of measurement killed the other two explanations and the remaining one is
-not observable from inside the page, so the cheapest discriminator left is the fix itself on the
-real app. **The step is not closed until the iPhone check below has been run** — see the table.
+**Status: a repair is shipped and the cause is still unknown.** Added 2026-07-30, found by step 7's
+iPhone check rather than by design; full trace in `docs/ios-export-2026-07-30.md`.
+
+Three explanations have now been tested and killed, in this order:
+
+1. **Freeze/resume.** Backgrounding the app for minutes comes back with every field filled, so
+   nothing needs repairing on resume and `visibilitychange` is not the hook.
+2. **The missing `value` attribute.** `docs/probe.html` put property-only, attribute-only and
+   both-ways inputs on the device — the property-only value assigned exactly the way `numericField`
+   does it, programmatically (`docs/probe.html:245`), *not* typed. It came back holding `123.5`
+   through a real `pageshow persisted=true`. **Do not touch `numericField`.**
+3. **Rendering into the departing document.** `exportBackup` used to rebuild `<main>` synchronously
+   after `link.click()`; that is now deferred by a macrotask, which on the device changed nothing —
+   the fields were still blank. The deferral stays, because not mutating a document that is
+   navigating away is right either way, but it is not the cause.
+
+What all three share is that the restore keeps this closure and this DOM alive. So what is shipped
+now is a repair that does not depend on knowing which of paint or state went wrong: **`render()` on
+`pageshow` when `event.persisted`**, which is what moving to another day and back already does.
+
+Shipped beside it, and **to be deleted**: a temporary on-screen readout of what the DOM held
+*before* that render. It is the one reading nobody has been able to take — whether the fields that
+*look* blank are actually empty — and it is deliberately not routed through `t()`, which is a stated
+exception to the rule for every other string in the app rather than an oversight. One device run
+both fixes the symptom and names the mechanism; then the readout comes out.
 
 **The problem.** Export a backup on installed iOS, dismiss the full-screen preview with `✕`, and
 you land back on the day you were on with **every exercise field empty**. Move to another day and
@@ -443,45 +461,33 @@ It is not a reload: after a reload the app lands on Plans, since `screen` is a c
 initialized to `"plans"` and never persisted (`src/app.js:35`). The DOM survived; its inputs were
 emptied.
 
-**Why it happens: not known, and the obvious answer has been tested and is wrong.** The reading from
-the code was that `numericField` assigns `value` as a property only (`src/views/fields.js:33` through
-`src/dom.js:31`), leaving the `value` *attribute* — the input's default — empty for a WebKit
-form-state restore to land on. `docs/probe.html` put that on the device: property-only,
-attribute-only and both, in a standalone page, exported through the same synthetic anchor, dismissed
-with `✕`. The restore happened (`pagehide persisted=true` → `pageshow persisted=true`, closure
-intact) and **the property-only input came back holding its value**. Tested twice, once with the
-inputs rebuilt right after the click the way `render()` does. So the attribute theory is dead: do
-not "fix" `numericField` on the strength of it.
+**Why it happens: still not known.** The status above says what has been eliminated and how. What
+survives is a fork nobody has managed to read, because the only report has been visual and the only
+instrument has been outside the app:
 
-**What is left, and what shipped for it.** The probe reads the DOM; the report was visual. The
-likeliest remaining explanation is that the values were never gone — only unpainted. `exportBackup`
-rebuilt `<main>` synchronously after `link.click()`, while the navigation was already in flight and
-one frame before the document freezes. And it did more than swap `<main>`: `updateBanners` toggles
-the backup reminder *above* it, and `.hidden` is `display: none !important`
-(`styles/app.css:106`), so the export's own render reflowed the entire page at that instant. A
-restored page-cache snapshot that caught that moment would show empty boxes over correct state until
-any interaction repaired it — which is what moving to another day and back did, and why nothing was
-ever actually lost.
+- **Paint.** The values were in the DOM the whole time and simply were not on screen. A restored
+  page-cache snapshot showing stale or half-built content would look exactly like this, and any
+  interaction would repair it — which is what moving to another day and back does.
+- **State.** The restore really does empty the inputs *in the app*, in a way it demonstrably does
+  not in a standalone page with the same kind of programmatically-assigned value.
 
-So the fix is not in `fields.js` at all: `setTimeout(render, 0)` puts the refresh past the
-navigation. `markExported(now)` stays synchronous and stays after the click, so the stamp survives
-even when the deferred render does not — and if iOS discards the document rather than restoring it,
-the next load reads `lastExport` from storage and renders the note correctly anyway. Forcing a
-repaint on `pageshow` remains the escalation, not the first move.
+`reportRestore` in `src/app.js` answers that and nothing else: it counts, before the repairing
+render, how many inputs under `<main>` still held a value, and prints the first three with their
+`value` and `value` attribute side by side.
 
-**The device check, which is the measurement.** A paint bug is not observable from inside the page —
-that is why the probe could not settle this and why the fix ships as the experiment. On the iPhone,
-in standalone, after the deploy: log numbers on a day, export, dismiss with `✕`, and look.
+**The device check.** On the iPhone, in standalone, after the deploy. **Fill every box on the day**
+— a partly-filled day makes the count ambiguous — then export, dismiss with `✕`, and read the black
+panel before dismissing it.
 
-| On return from `✕` | Reading | Next |
+| The readout says | Reading | Next |
 |---|---|---|
-| Filled, repeatedly | The synchronous render into a departing document was it | Step 9 closes; delete `docs/probe.html` and `docs/probe.webmanifest` |
-| Filled without the reminder banner, blank with it | Same cause, and the reflow is the specific trigger | Step 9 closes; record the banner as the mechanism |
-| Still blank | The paint hypothesis is wrong or incomplete | Keep the fix — not re-rendering into a departing document is right regardless — and escalate to a temporary snapshot inside the app on `pageshow`, which touches shipped files and costs another `CACHE_VERSION` bump, so it needs deciding rather than assuming |
+| `still held a value = N / N` | Paint. The DOM was intact and WebKit was showing a stale surface | Keep the `pageshow` render as the fix, delete the readout, close the step |
+| `still held a value = 0 / N` | State. The restore empties them in the app | Keep the fix, delete the readout, and record what the probe did differently — that is the remaining puzzle, not a blocker |
+| Fields blank *and no panel* | The restore is not `persisted`, so this was never a page-cache restore at all | Everything above is built on the wrong premise; the next move is what `pageshow` *does* fire with, and step 7 becomes the whole answer |
 
-The banner row is worth the extra run: it is `overdue && hasData && !dismissedRecently`
-(`src/views/banners.js:48-51`), so it is controllable, and it is the difference between a subtree
-swap and a full-page reflow.
+That last row is the one worth watching for: it is the only outcome that says the model is wrong
+rather than incomplete, and `pagehide persisted =` on the panel is the same question asked from the
+other side.
 
 **The trigger was narrowed on 2026-07-30, and it is step 7's own path.** Backgrounding the app for
 several minutes and returning does **not** reproduce it: the app comes back on the day view with
@@ -510,6 +516,13 @@ inside **one** `Runtime.evaluate`, and neither the note nor the banner may have 
 against the previous commit and exactly those two checks fail. Seed the plan through
 `localStorage` before the load (pre-serialized string literals, per step 8's note) and remember that
 an already-active plan offers no "Use" button, so the way onto the log screen is "Back to training".
+
+The `pageshow` half was checked the same way, 10 assertions. A real page-cache restore is not
+drivable from CDP, so the check blanks the inputs by hand and dispatches
+`new PageTransitionEvent("pageshow", { persisted: true })` — the constructor takes `persisted`, which
+is read-only on the instance. That covers the readout's counts and its conclusion, the render putting
+the numbers back, `dismiss`, and that a **non**-persisted `pageshow` is ignored, which is what keeps
+an ordinary load from showing the panel.
 
 ## Not scheduled, and why
 
